@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Filtro de Planilhas Excel - Com Identificação de Quias</title>
+    <title>Filtro de Planilhas Excel - Com Identificação de Grupos</title>
     <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
     <style>
         * {
@@ -40,6 +40,11 @@
             color: #3498db;
             border-bottom: 1px solid #eee;
             padding-bottom: 10px;
+        }
+        
+        h3 {
+            margin: 20px 0 10px;
+            color: #2c3e50;
         }
         
         .upload-section {
@@ -83,7 +88,7 @@
             color: #7f8c8d;
         }
         
-        .quias-panel {
+        .groups-panel {
             background: #f8f9fa;
             border-radius: 8px;
             padding: 20px;
@@ -91,14 +96,14 @@
             display: none;
         }
         
-        .quias-list {
+        .groups-list {
             display: flex;
             flex-wrap: wrap;
             gap: 10px;
             margin-top: 15px;
         }
         
-        .quia-btn {
+        .group-btn {
             background: #e9ecef;
             border: 1px solid #dee2e6;
             border-radius: 5px;
@@ -107,11 +112,11 @@
             transition: all 0.3s;
         }
         
-        .quia-btn:hover {
+        .group-btn:hover {
             background: #dee2e6;
         }
         
-        .quia-btn.active {
+        .group-btn.active {
             background: #3498db;
             color: white;
             border-color: #2980b9;
@@ -258,14 +263,21 @@
             border-top: 2px solid #3498db;
         }
         
-        .quia-header {
+        .group-header {
             background-color: #e8f4fc !important;
             font-weight: bold;
             font-size: 1.1em;
         }
         
-        .quia-row {
+        .group-row {
             background-color: #f0f8ff !important;
+        }
+        
+        .groups-info {
+            background: #e8f4fc;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 15px 0;
         }
         
         @media (max-width: 768px) {
@@ -277,7 +289,7 @@
                 min-width: 100%;
             }
             
-            .quias-list {
+            .groups-list {
                 flex-direction: column;
             }
         }
@@ -285,7 +297,7 @@
 </head>
 <body>
     <div class="container">
-        <h1>Filtro de Planilhas Excel - Com Identificação de Quias</h1>
+        <h1>Filtro de Planilhas Excel - Com Identificação de Grupos</h1>
         
         <div class="upload-section">
             <h3>Faça upload da sua planilha Excel</h3>
@@ -297,11 +309,14 @@
         
         <div class="status" id="statusMessage"></div>
         
-        <div class="quias-panel" id="quiasPanel">
-            <h3>Quias Identificadas</h3>
-            <p>Clique em uma quia para filtrar os dados:</p>
-            <div class="quias-list" id="quiasList">
-                <!-- Botões de quia serão gerados dinamicamente aqui -->
+        <div class="groups-panel" id="groupsPanel">
+            <h3>Grupos Identificados</h3>
+            <p>Clique em um grupo para filtrar os dados:</p>
+            <div class="groups-list" id="groupsList">
+                <!-- Botões de grupo serão gerados dinamicamente aqui -->
+            </div>
+            <div class="groups-info" id="groupsInfo">
+                <!-- Informações sobre os grupos identificados -->
             </div>
         </div>
         
@@ -338,15 +353,16 @@
         let filteredData = [];
         let columns = [];
         let numericColumns = [];
-        let quias = [];
-        let currentQuia = null;
+        let groups = [];
+        let currentGroup = null;
         
         // Elementos DOM
         const fileInput = document.getElementById('fileInput');
         const fileInfo = document.getElementById('fileInfo');
         const statusMessage = document.getElementById('statusMessage');
-        const quiasPanel = document.getElementById('quiasPanel');
-        const quiasList = document.getElementById('quiasList');
+        const groupsPanel = document.getElementById('groupsPanel');
+        const groupsList = document.getElementById('groupsList');
+        const groupsInfo = document.getElementById('groupsInfo');
         const filtersSection = document.getElementById('filtersSection');
         const filterRow = document.getElementById('filterRow');
         const resetFiltersBtn = document.getElementById('resetFilters');
@@ -423,8 +439,8 @@
             // Identificar colunas numéricas
             identifyNumericColumns(data);
             
-            // Identificar quias
-            identifyQuias(data);
+            // Identificar grupos
+            identifyGroups(data);
             
             // Converter linhas de dados em objetos
             excelData = [];
@@ -436,16 +452,16 @@
                     rowObj[columns[j]] = row[j] !== undefined ? row[j] : '';
                 }
                 
-                // Adicionar informações de quia
-                rowObj._quia = findQuiaForRow(rowObj, i);
+                // Adicionar informações de grupo
+                rowObj._group = findGroupForRow(rowObj, i);
                 
                 excelData.push(rowObj);
             }
             
             filteredData = [...excelData];
             
-            // Gerar botões de quia
-            generateQuiaButtons();
+            // Gerar botões de grupo
+            generateGroupButtons();
             
             // Gerar filtros
             generateFilters();
@@ -454,102 +470,110 @@
             renderTable();
             
             // Mostrar seções
-            quiasPanel.style.display = 'block';
+            groupsPanel.style.display = 'block';
             filtersSection.style.display = 'block';
             tableContainer.style.display = 'block';
             exportSection.style.display = 'block';
         }
         
-        // Função para identificar quias na planilha
-        function identifyQuias(data) {
-            quias = [];
+        // Função para identificar grupos na planilha
+        function identifyGroups(data) {
+            groups = [];
             
-            // Estratégia 1: Procurar por linhas que são quias (cabeçalhos de seção)
+            // Estratégia 1: Procurar por linhas que são cabeçalhos de grupo
             for (let i = 1; i < data.length; i++) {
                 const row = data[i];
                 
-                // Verificar se esta linha é uma quia
-                if (isQuiaRow(row, data[0])) {
-                    const quiaName = extractQuiaName(row);
-                    if (quiaName) {
-                        quias.push({
-                            name: quiaName,
-                            rowIndex: i,
-                            type: 'header'
-                        });
-                    }
+                // Verificar se esta linha é um cabeçalho de grupo
+                const groupInfo = isGroupHeader(row);
+                if (groupInfo) {
+                    groups.push({
+                        name: groupInfo.name,
+                        rowIndex: i,
+                        type: 'header',
+                        column: groupInfo.column
+                    });
                 }
             }
             
-            // Estratégia 2: Procurar por valores únicos que funcionam como categorias
-            identifyQuiasByCategories(data);
+            // Estratégia 2: Procurar por valores de grupo em colunas específicas
+            identifyGroupsByColumns(data);
             
-            // Se não encontramos quias, criar uma padrão
-            if (quias.length === 0) {
-                quias.push({
+            // Se não encontramos grupos, criar um padrão
+            if (groups.length === 0) {
+                groups.push({
                     name: 'Todos os Dados',
                     rowIndex: 1,
                     type: 'default'
                 });
             }
             
-            console.log('Quias identificadas:', quias);
+            console.log('Grupos identificados:', groups);
+            
+            // Atualizar informações sobre grupos
+            updateGroupsInfo();
         }
         
-        // Função para verificar se uma linha é uma quia
-        function isQuiaRow(row, headers) {
-            // Contar células não vazias
-            const nonEmptyCells = row.filter(cell => 
-                cell !== undefined && cell !== null && cell !== '').length;
-            
-            // Se há poucas células preenchidas (1-3), pode ser uma quia
-            if (nonEmptyCells >= 1 && nonEmptyCells <= 3) {
-                // Verificar se contém palavras características de quias
-                const rowText = row.join(' ').toLowerCase();
-                const quiaIndicators = [
-                    // Padrões comuns em quias
-                    'total', 'subtotal', 'resumo', 'sumário',
-                    'categoria', 'grupo', 'seção', 'divisão',
-                    'relatório', 'análise', 'dados', 'informações',
-                    // Meses
-                    'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
-                    'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro',
-                    // Trimestres
-                    '1º trimestre', '2º trimestre', '3º trimestre', '4º trimestre',
-                    'primeiro trimestre', 'segundo trimestre', 'terceiro trimestre', 'quarto trimestre',
-                    // Anos
-                    '2020', '2021', '2022', '2023', '2024', '2025'
-                ];
-                
-                return quiaIndicators.some(indicator => rowText.includes(indicator));
-            }
-            
-            // Verificar se é uma linha com formatação diferente (muitas células mescladas ou vazias)
-            const emptyCells = row.filter(cell => 
-                cell === undefined || cell === null || cell === '').length;
-            
-            if (emptyCells >= headers.length - 2) {
-                return true; // Linha com poucos dados - provavelmente quia
-            }
-            
-            return false;
-        }
-        
-        // Função para extrair o nome da quia
-        function extractQuiaName(row) {
-            // Encontrar a primeira célula não vazia com conteúdo significativo
+        // Função para verificar se uma linha é um cabeçalho de grupo
+        function isGroupHeader(row) {
             for (let i = 0; i < row.length; i++) {
                 const cell = row[i];
-                if (cell && cell.toString().trim() !== '') {
-                    return cell.toString().trim();
+                if (cell && typeof cell === 'string') {
+                    const cellValue = cell.toString().toUpperCase().trim();
+                    
+                    // Padrões para identificar grupos
+                    const groupPatterns = [
+                        /GRUPO\s*\d+/i, // GRUPO 1, GRUPO 2, etc.
+                        /GRUPO\s*\d+\s*[A-Z]+/i, // GRUPO 1 UV, GRUPO 2 FOSCO, etc.
+                        /CATEGORIA\s*\d+/i,
+                        /TIPO\s*\d+/i,
+                        /SETOR\s*\d+/i,
+                        /DIVIS[AO]\s*\d+/i
+                    ];
+                    
+                    for (const pattern of groupPatterns) {
+                        if (pattern.test(cellValue)) {
+                            return {
+                                name: cell.trim(),
+                                column: i
+                            };
+                        }
+                    }
+                    
+                    // Verificar também se é um valor que parece ser um grupo
+                    if (isLikelyGroupName(cellValue)) {
+                        return {
+                            name: cell.trim(),
+                            column: i
+                        };
+                    }
                 }
             }
+            
             return null;
         }
         
-        // Função para identificar quias por categorias em colunas
-        function identifyQuiasByCategories(data) {
-            // Procurar por colunas que têm valores que funcionam como categorias/quias
+        // Função para verificar se um valor parece ser um nome de grupo
+        function isLikelyGroupName(value) {
+            const strValue = value.toString().toUpperCase();
+            
+            // Padrões que indicam um nome de grupo
+            const indicators = [
+                /^GRUPO/i,
+                /^CATEGORIA/i,
+                /^TIPO/i,
+                /^SETOR/i,
+                /^DIVIS[AO]/i,
+                /^[A-Z]+\s*\d+/, // Letras seguidas de números
+                /^\d+\s*[A-Z]+/  // Números seguidos de letras
+            ];
+            
+            return indicators.some(indicator => indicator.test(strValue));
+        }
+        
+        // Função para identificar grupos por colunas
+        function identifyGroupsByColumns(data) {
+            // Procurar por colunas que contêm valores de grupo
             for (let colIndex = 0; colIndex < columns.length; colIndex++) {
                 const columnName = columns[colIndex];
                 const uniqueValues = new Set();
@@ -562,112 +586,131 @@
                     }
                 }
                 
-                // Se temos valores únicos que podem ser quias
-                if (uniqueValues.size > 1 && uniqueValues.size <= 15) {
+                // Se temos valores que podem ser grupos
+                if (uniqueValues.size > 1 && uniqueValues.size <= 20) {
                     uniqueValues.forEach(value => {
-                        // Verificar se o valor parece ser uma quia
-                        if (isQuiaValue(value)) {
-                            quias.push({
-                                name: `${value}`,
-                                column: columnName,
-                                value: value,
-                                type: 'category'
-                            });
+                        if (isLikelyGroupValue(value)) {
+                            // Verificar se já não temos este grupo
+                            const existingGroup = groups.find(g => g.name === value);
+                            if (!existingGroup) {
+                                groups.push({
+                                    name: value,
+                                    column: columnName,
+                                    value: value,
+                                    type: 'category'
+                                });
+                            }
                         }
                     });
                 }
             }
         }
         
-        // Função para verificar se um valor parece ser uma quia
-        function isQuiaValue(value) {
+        // Função para verificar se um valor parece ser um valor de grupo
+        function isLikelyGroupValue(value) {
             if (!value || typeof value !== 'string') return false;
             
-            const strValue = value.toString().toLowerCase();
-            const quiaPatterns = [
-                // Padrões de quias
-                /^total/i, /^subtotal/i, /^resumo/i, /^sumário/i,
-                /^categoria/i, /^grupo/i, /^seção/i, /^divisão/i,
-                /^relatório/i, /^análise/i,
-                // Meses
-                /janeiro|fevereiro|março|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro/i,
-                // Trimestres
-                /\dº trimestre|primeiro trimestre|segundo trimestre|terceiro trimestre|quarto trimestre/i,
-                // Anos
-                /^20\d{2}$/
+            const strValue = value.toString().toUpperCase();
+            
+            // Padrões que indicam valores de grupo
+            const patterns = [
+                /GRUPO/i,
+                /CATEGORIA/i,
+                /TIPO/i,
+                /SETOR/i,
+                /DIVIS[AO]/i,
+                /^[A-Z]+\s*\d+/, // Letras seguidas de números (ex: UV 1, FOSCO 2)
+                /^\d+\s*[A-Z]+/,  // Números seguidos de letras (ex: 1 UV, 2 FOSCO)
+                /^[A-Z]{2,}$/,    // Siglas (ex: UV, FOSCO, etc.)
+                /^\d+$/,          // Apenas números
             ];
             
-            return quiaPatterns.some(pattern => pattern.test(strValue));
+            return patterns.some(pattern => pattern.test(strValue));
         }
         
-        // Função para encontrar a quia de uma linha
-        function findQuiaForRow(rowObj, rowIndex) {
-            // Primeiro, verificar se esta linha é uma quia
-            for (const quia of quias) {
-                if (quia.rowIndex === rowIndex) {
-                    return quia.name;
+        // Função para encontrar o grupo de uma linha
+        function findGroupForRow(rowObj, rowIndex) {
+            // Primeiro, verificar se esta linha é um cabeçalho de grupo
+            for (const group of groups) {
+                if (group.rowIndex === rowIndex) {
+                    return group.name;
                 }
             }
             
-            // Depois, verificar por categorias
-            for (const quia of quias) {
-                if (quia.column && rowObj[quia.column] === quia.value) {
-                    return quia.name;
+            // Depois, verificar por grupos baseados em colunas
+            for (const group of groups) {
+                if (group.column && rowObj[group.column] === group.value) {
+                    return group.name;
                 }
             }
             
-            // Se não encontrou quia específica, encontrar a quia mais próxima acima
-            let closestQuia = 'Geral';
+            // Se não encontrou grupo específico, encontrar o grupo mais próximo acima
+            let closestGroup = 'Geral';
             let closestDistance = Infinity;
             
-            for (const quia of quias) {
-                if (quia.rowIndex < rowIndex && (rowIndex - quia.rowIndex) < closestDistance) {
-                    closestDistance = rowIndex - quia.rowIndex;
-                    closestQuia = quia.name;
+            for (const group of groups) {
+                if (group.rowIndex < rowIndex && (rowIndex - group.rowIndex) < closestDistance) {
+                    closestDistance = rowIndex - group.rowIndex;
+                    closestGroup = group.name;
                 }
             }
             
-            return closestQuia;
+            return closestGroup;
         }
         
-        // Função para gerar botões de quia
-        function generateQuiaButtons() {
-            quiasList.innerHTML = '';
+        // Função para atualizar informações sobre grupos
+        function updateGroupsInfo() {
+            if (groups.length === 0) return;
+            
+            let infoHTML = '<h4>Grupos Encontrados:</h4><ul>';
+            
+            groups.forEach(group => {
+                const rowCount = excelData.filter(row => row._group === group.name).length;
+                infoHTML += `<li><strong>${group.name}</strong>: ${rowCount} linha(s)</li>`;
+            });
+            
+            infoHTML += '</ul>';
+            groupsInfo.innerHTML = infoHTML;
+        }
+        
+        // Função para gerar botões de grupo
+        function generateGroupButtons() {
+            groupsList.innerHTML = '';
             
             // Adicionar botão para "Todos"
             const allButton = document.createElement('button');
-            allButton.className = 'quia-btn active';
-            allButton.textContent = 'Todos';
+            allButton.className = 'group-btn active';
+            allButton.textContent = 'Todos os Grupos';
             allButton.addEventListener('click', () => {
                 // Remover classe active de todos os botões
-                document.querySelectorAll('.quia-btn').forEach(btn => {
+                document.querySelectorAll('.group-btn').forEach(btn => {
                     btn.classList.remove('active');
                 });
                 // Adicionar classe active ao botão clicado
                 allButton.classList.add('active');
                 
-                currentQuia = null;
+                currentGroup = null;
                 applyFilters();
             });
-            quiasList.appendChild(allButton);
+            groupsList.appendChild(allButton);
             
-            // Adicionar botões para cada quia
-            quias.forEach(quia => {
-                const quiaButton = document.createElement('button');
-                quiaButton.className = 'quia-btn';
-                quiaButton.textContent = quia.name;
-                quiaButton.addEventListener('click', () => {
+            // Adicionar botões para cada grupo
+            groups.forEach(group => {
+                const groupButton = document.createElement('button');
+                groupButton.className = 'group-btn';
+                groupButton.textContent = group.name;
+                groupButton.addEventListener('click', () => {
                     // Remover classe active de todos os botões
-                    document.querySelectorAll('.quia-btn').forEach(btn => {
+                    document.querySelectorAll('.group-btn').forEach(btn => {
                         btn.classList.remove('active');
                     });
                     // Adicionar classe active ao botão clicado
-                    quiaButton.classList.add('active');
+                    groupButton.classList.add('active');
                     
-                    currentQuia = quia.name;
+                    currentGroup = group.name;
                     applyFilters();
                 });
-                quiasList.appendChild(quiaButton);
+                groupsList.appendChild(groupButton);
             });
         }
         
@@ -714,37 +757,37 @@
         function generateFilters() {
             filterRow.innerHTML = '';
             
-            // Adicionar filtro de quia
-            const quiaFilterGroup = document.createElement('div');
-            quiaFilterGroup.className = 'filter-group';
+            // Adicionar filtro de grupo
+            const groupFilterGroup = document.createElement('div');
+            groupFilterGroup.className = 'filter-group';
             
-            const quiaLabel = document.createElement('label');
-            quiaLabel.textContent = 'Quia';
-            quiaLabel.setAttribute('for', 'filter-quia');
+            const groupLabel = document.createElement('label');
+            groupLabel.textContent = 'Grupo';
+            groupLabel.setAttribute('for', 'filter-group');
             
-            const quiaSelect = document.createElement('select');
-            quiaSelect.id = 'filter-quia';
-            quiaSelect.dataset.column = '_quia';
+            const groupSelect = document.createElement('select');
+            groupSelect.id = 'filter-group';
+            groupSelect.dataset.column = '_group';
             
             // Adicionar opção vazia
             const emptyOption = document.createElement('option');
             emptyOption.value = '';
-            emptyOption.textContent = 'Todas';
-            quiaSelect.appendChild(emptyOption);
+            emptyOption.textContent = 'Todos os Grupos';
+            groupSelect.appendChild(emptyOption);
             
-            // Adicionar opções para cada quia
-            const uniqueQuias = [...new Set(excelData.map(row => row._quia))].filter(value => value !== '');
+            // Adicionar opções para cada grupo
+            const uniqueGroups = [...new Set(excelData.map(row => row._group))].filter(value => value !== '');
             
-            uniqueQuias.forEach(value => {
+            uniqueGroups.forEach(value => {
                 const option = document.createElement('option');
                 option.value = value;
                 option.textContent = value;
-                quiaSelect.appendChild(option);
+                groupSelect.appendChild(option);
             });
             
-            quiaFilterGroup.appendChild(quiaLabel);
-            quiaFilterGroup.appendChild(quiaSelect);
-            filterRow.appendChild(quiaFilterGroup);
+            groupFilterGroup.appendChild(groupLabel);
+            groupFilterGroup.appendChild(groupSelect);
+            filterRow.appendChild(groupFilterGroup);
             
             // Adicionar filtros para outras colunas
             columns.forEach(column => {
@@ -786,16 +829,16 @@
         function applyFilters() {
             filteredData = [...excelData];
             
-            // Aplicar filtro de quia se selecionado
-            if (currentQuia) {
-                filteredData = filteredData.filter(row => row._quia === currentQuia);
+            // Aplicar filtro de grupo se selecionado
+            if (currentGroup) {
+                filteredData = filteredData.filter(row => row._group === currentGroup);
             } else {
-                // Aplicar filtro de quia do dropdown se não houver quia ativa
-                const quiaFilter = document.getElementById('filter-quia');
-                const quiaFilterValue = quiaFilter.value;
+                // Aplicar filtro de grupo do dropdown se não houver grupo ativo
+                const groupFilter = document.getElementById('filter-group');
+                const groupFilterValue = groupFilter.value;
                 
-                if (quiaFilterValue) {
-                    filteredData = filteredData.filter(row => row._quia === quiaFilterValue);
+                if (groupFilterValue) {
+                    filteredData = filteredData.filter(row => row._group === groupFilterValue);
                 }
             }
             
@@ -825,19 +868,19 @@
                 filterElement.value = '';
             });
             
-            // Resetar filtro de quia
-            const quiaFilter = document.getElementById('filter-quia');
-            quiaFilter.value = '';
+            // Resetar filtro de grupo
+            const groupFilter = document.getElementById('filter-group');
+            groupFilter.value = '';
             
-            // Resetar quia ativa
-            currentQuia = null;
+            // Resetar grupo ativo
+            currentGroup = null;
             
             // Ativar botão "Todos"
-            document.querySelectorAll('.quia-btn').forEach(btn => {
+            document.querySelectorAll('.group-btn').forEach(btn => {
                 btn.classList.remove('active');
             });
-            if (document.querySelectorAll('.quia-btn')[0]) {
-                document.querySelectorAll('.quia-btn')[0].classList.add('active');
+            if (document.querySelectorAll('.group-btn')[0]) {
+                document.querySelectorAll('.group-btn')[0].classList.add('active');
             }
             
             filteredData = [...excelData];
@@ -859,10 +902,10 @@
                 th.textContent = column;
                 headerRow.appendChild(th);
             });
-            // Adicionar coluna de quia
-            const quiaTh = document.createElement('th');
-            quiaTh.textContent = 'Quia';
-            headerRow.appendChild(quiaTh);
+            // Adicionar coluna de grupo
+            const groupTh = document.createElement('th');
+            groupTh.textContent = 'Grupo';
+            headerRow.appendChild(groupTh);
             tableHeader.appendChild(headerRow);
             
             // Adicionar dados
@@ -875,30 +918,30 @@
                 noDataRow.appendChild(noDataCell);
                 tableBody.appendChild(noDataRow);
             } else {
-                let currentDisplayQuia = null;
+                let currentDisplayGroup = null;
                 
                 filteredData.forEach((row, index) => {
-                    // Verificar se esta linha é uma quia
-                    const isQuiaRow = quias.some(quia => 
-                        quia.name === row._quia && quias.find(q => q.name === row._quia)?.rowIndex === excelData.findIndex(r => r === row) + 1
+                    // Verificar se esta linha é um cabeçalho de grupo
+                    const isGroupHeader = groups.some(group => 
+                        group.name === row._group && group.rowIndex === excelData.findIndex(r => r === row) + 1
                     );
                     
-                    // Adicionar cabeçalho de quia se mudou de quia
-                    if (row._quia !== currentDisplayQuia) {
-                        currentDisplayQuia = row._quia;
+                    // Adicionar cabeçalho de grupo se mudou de grupo
+                    if (row._group !== currentDisplayGroup) {
+                        currentDisplayGroup = row._group;
                         
-                        const quiaHeaderRow = document.createElement('tr');
-                        quiaHeaderRow.className = 'quia-header';
-                        const quiaHeaderCell = document.createElement('td');
-                        quiaHeaderCell.colSpan = columns.length + 1;
-                        quiaHeaderCell.textContent = `QUIA: ${currentDisplayQuia}`;
-                        quiaHeaderRow.appendChild(quiaHeaderCell);
-                        tableBody.appendChild(quiaHeaderRow);
+                        const groupHeaderRow = document.createElement('tr');
+                        groupHeaderRow.className = 'group-header';
+                        const groupHeaderCell = document.createElement('td');
+                        groupHeaderCell.colSpan = columns.length + 1;
+                        groupHeaderCell.textContent = `GRUPO: ${currentDisplayGroup}`;
+                        groupHeaderRow.appendChild(groupHeaderCell);
+                        tableBody.appendChild(groupHeaderRow);
                     }
                     
                     const tableRow = document.createElement('tr');
-                    if (isQuiaRow) {
-                        tableRow.className = 'quia-row';
+                    if (isGroupHeader) {
+                        tableRow.className = 'group-row';
                     }
                     
                     columns.forEach(column => {
@@ -907,10 +950,10 @@
                         tableRow.appendChild(td);
                     });
                     
-                    // Adicionar célula de quia
-                    const quiaTd = document.createElement('td');
-                    quiaTd.textContent = row._quia;
-                    tableRow.appendChild(quiaTd);
+                    // Adicionar célula de grupo
+                    const groupTd = document.createElement('td');
+                    groupTd.textContent = row._group;
+                    tableRow.appendChild(groupTd);
                     
                     tableBody.appendChild(tableRow);
                 });
@@ -956,7 +999,7 @@
                 totalsRow.appendChild(td);
             });
             
-            // Célula vazia para a coluna de quia
+            // Célula vazia para a coluna de grupo
             const emptyTd = document.createElement('td');
             emptyTd.textContent = '';
             totalsRow.appendChild(emptyTd);
