@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Filtro de Planilhas Excel - Com Identificação de Sub-Planilhas</title>
+    <title>Filtro de Planilhas Excel - Com Identificação de Múltiplas Abas</title>
     <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
     <style>
         * {
@@ -88,7 +88,7 @@
             color: #7f8c8d;
         }
         
-        .subsheets-panel {
+        .sheets-panel {
             background: #f8f9fa;
             border-radius: 8px;
             padding: 20px;
@@ -96,14 +96,14 @@
             display: none;
         }
         
-        .subsheets-list {
+        .sheets-list {
             display: flex;
             flex-wrap: wrap;
             gap: 10px;
             margin-top: 15px;
         }
         
-        .subsheet-btn {
+        .sheet-btn {
             background: #e9ecef;
             border: 1px solid #dee2e6;
             border-radius: 5px;
@@ -112,11 +112,11 @@
             transition: all 0.3s;
         }
         
-        .subsheet-btn:hover {
+        .sheet-btn:hover {
             background: #dee2e6;
         }
         
-        .subsheet-btn.active {
+        .sheet-btn.active {
             background: #3498db;
             color: white;
             border-color: #2980b9;
@@ -263,20 +263,20 @@
             border-top: 2px solid #3498db;
         }
         
-        .subsheet-header {
+        .sheet-header {
             background-color: #e8f4fc !important;
             font-weight: bold;
             font-size: 1.1em;
         }
         
-        .subsheet-info {
+        .sheet-info {
             background: #e8f4fc;
             border-radius: 5px;
             padding: 15px;
             margin: 15px 0;
         }
         
-        .subsheet-stats {
+        .sheet-stats {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
             gap: 15px;
@@ -302,6 +302,15 @@
             color: #7f8c8d;
         }
         
+        .current-sheet {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 5px;
+            padding: 10px 15px;
+            margin: 10px 0;
+            font-weight: bold;
+        }
+        
         @media (max-width: 768px) {
             .filter-row {
                 flex-direction: column;
@@ -311,11 +320,11 @@
                 min-width: 100%;
             }
             
-            .subsheets-list {
+            .sheets-list {
                 flex-direction: column;
             }
             
-            .subsheet-stats {
+            .sheet-stats {
                 grid-template-columns: 1fr;
             }
         }
@@ -323,7 +332,7 @@
 </head>
 <body>
     <div class="container">
-        <h1>Filtro de Planilhas Excel - Com Identificação de Sub-Planilhas</h1>
+        <h1>Filtro de Planilhas Excel - Com Identificação de Múltiplas Abas</h1>
         
         <div class="upload-section">
             <h3>Faça upload da sua planilha Excel</h3>
@@ -335,18 +344,21 @@
         
         <div class="status" id="statusMessage"></div>
         
-        <div class="subsheets-panel" id="subsheetsPanel">
-            <h3>Sub-Planilhas Identificadas</h3>
-            <p>Clique em uma sub-planilha para filtrar os dados:</p>
-            <div class="subsheets-list" id="subsheetsList">
-                <!-- Botões de sub-planilha serão gerados dinamicamente aqui -->
+        <div class="sheets-panel" id="sheetsPanel">
+            <h3>Abas/Planilhas Identificadas</h3>
+            <p>Clique em uma aba para visualizar os dados:</p>
+            <div class="sheets-list" id="sheetsList">
+                <!-- Botões de aba serão gerados dinamicamente aqui -->
             </div>
-            <div class="subsheet-info" id="subsheetInfo">
-                <!-- Informações sobre as sub-planilhas identificadas -->
+            <div class="sheet-info" id="sheetInfo">
+                <!-- Informações sobre as abas identificadas -->
             </div>
         </div>
         
         <div class="filters-section" id="filtersSection">
+            <div class="current-sheet" id="currentSheetInfo">
+                <!-- Informações da aba atual -->
+            </div>
             <h3>Filtros</h3>
             <div class="filter-row" id="filterRow">
                 <!-- Filtros serão gerados dinamicamente aqui -->
@@ -375,20 +387,22 @@
 
     <script>
         // Variáveis globais
-        let excelData = [];
+        let workbook = null;
+        let currentSheetData = [];
         let filteredData = [];
         let columns = [];
         let numericColumns = [];
-        let subsheets = [];
-        let currentSubsheet = null;
+        let sheetNames = [];
+        let currentSheetName = null;
         
         // Elementos DOM
         const fileInput = document.getElementById('fileInput');
         const fileInfo = document.getElementById('fileInfo');
         const statusMessage = document.getElementById('statusMessage');
-        const subsheetsPanel = document.getElementById('subsheetsPanel');
-        const subsheetsList = document.getElementById('subsheetsList');
-        const subsheetInfo = document.getElementById('subsheetInfo');
+        const sheetsPanel = document.getElementById('sheetsPanel');
+        const sheetsList = document.getElementById('sheetsList');
+        const sheetInfo = document.getElementById('sheetInfo');
+        const currentSheetInfo = document.getElementById('currentSheetInfo');
         const filtersSection = document.getElementById('filtersSection');
         const filterRow = document.getElementById('filterRow');
         const resetFiltersBtn = document.getElementById('resetFilters');
@@ -426,22 +440,18 @@
             reader.onload = function(e) {
                 try {
                     const data = new Uint8Array(e.target.result);
-                    const workbook = XLSX.read(data, { type: 'array' });
+                    workbook = XLSX.read(data, { type: 'array' });
                     
-                    // Obter a primeira planilha
-                    const firstSheetName = workbook.SheetNames[0];
-                    const worksheet = workbook.Sheets[firstSheetName];
+                    // Obter nomes das abas
+                    sheetNames = workbook.SheetNames;
                     
-                    // Converter para JSON
-                    const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-                    
-                    if (jsonData.length === 0) {
-                        showStatus('A planilha está vazia', 'error');
+                    if (sheetNames.length === 0) {
+                        showStatus('O arquivo não contém planilhas', 'error');
                         return;
                     }
                     
                     // Processar dados
-                    processExcelData(jsonData);
+                    processWorkbook();
                     showStatus('Planilha carregada com sucesso!', 'success');
                     
                 } catch (error) {
@@ -457,19 +467,61 @@
             reader.readAsArrayBuffer(file);
         }
         
-        // Função para processar dados do Excel
-        function processExcelData(data) {
+        // Função para processar o workbook completo
+        function processWorkbook() {
+            // Gerar botões de aba
+            generateSheetButtons();
+            
+            // Carregar a primeira aba por padrão
+            if (sheetNames.length > 0) {
+                loadSheet(sheetNames[0]);
+            }
+            
+            // Atualizar informações sobre as abas
+            updateSheetInfo();
+            
+            // Mostrar seções
+            sheetsPanel.style.display = 'block';
+        }
+        
+        // Função para carregar uma aba específica
+        function loadSheet(sheetName) {
+            try {
+                const worksheet = workbook.Sheets[sheetName];
+                
+                // Converter para JSON
+                const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+                
+                if (jsonData.length === 0) {
+                    showStatus(`A aba "${sheetName}" está vazia`, 'error');
+                    return;
+                }
+                
+                // Processar dados da aba
+                processSheetData(jsonData, sheetName);
+                currentSheetName = sheetName;
+                
+                // Atualizar informações da aba atual
+                updateCurrentSheetInfo();
+                
+                showStatus(`Aba "${sheetName}" carregada com sucesso!`, 'success');
+                
+            } catch (error) {
+                console.error(`Erro ao carregar aba ${sheetName}:`, error);
+                showStatus(`Erro ao carregar a aba "${sheetName}"`, 'error');
+            }
+        }
+        
+        // Função para processar dados de uma aba específica
+        function processSheetData(data, sheetName) {
             // A primeira linha deve conter os cabeçalhos
-            columns = data[0];
+            columns = data[0] || [];
             
             // Identificar colunas numéricas
             identifyNumericColumns(data);
             
-            // Identificar sub-planilhas
-            identifySubsheets(data);
-            
             // Converter linhas de dados em objetos
-            excelData = [];
+            currentSheetData = [];
             for (let i = 1; i < data.length; i++) {
                 const row = data[i];
                 const rowObj = {};
@@ -478,16 +530,13 @@
                     rowObj[columns[j]] = row[j] !== undefined ? row[j] : '';
                 }
                 
-                // Adicionar informações de sub-planilha
-                rowObj._subsheet = findSubsheetForRow(rowObj, i);
+                // Adicionar informação da aba de origem
+                rowObj._sheet = sheetName;
                 
-                excelData.push(rowObj);
+                currentSheetData.push(rowObj);
             }
             
-            filteredData = [...excelData];
-            
-            // Gerar botões de sub-planilha
-            generateSubsheetButtons();
+            filteredData = [...currentSheetData];
             
             // Gerar filtros
             generateFilters();
@@ -496,363 +545,85 @@
             renderTable();
             
             // Mostrar seções
-            subsheetsPanel.style.display = 'block';
             filtersSection.style.display = 'block';
             tableContainer.style.display = 'block';
             exportSection.style.display = 'block';
         }
         
-        // Função para identificar sub-planilhas dentro da planilha principal
-        function identifySubsheets(data) {
-            subsheets = [];
+        // Função para gerar botões de aba
+        function generateSheetButtons() {
+            sheetsList.innerHTML = '';
             
-            // Estratégia 1: Procurar por cabeçalhos de sub-planilha
-            for (let i = 1; i < data.length; i++) {
-                const row = data[i];
-                
-                // Verificar se esta linha é um cabeçalho de sub-planilha
-                const subsheetInfo = isSubsheetHeader(row, data[0]);
-                if (subsheetInfo) {
-                    // Encontrar onde esta sub-planilha termina
-                    const endRow = findSubsheetEnd(data, i);
-                    
-                    subsheets.push({
-                        name: subsheetInfo.name,
-                        startRow: i,
-                        endRow: endRow,
-                        type: subsheetInfo.type,
-                        rowCount: endRow - i
-                    });
-                    
-                    // Pular para o final desta sub-planilha
-                    i = endRow;
+            // Adicionar botões para cada aba
+            sheetNames.forEach(sheetName => {
+                const sheetButton = document.createElement('button');
+                sheetButton.className = 'sheet-btn';
+                if (sheetName === currentSheetName) {
+                    sheetButton.classList.add('active');
                 }
-            }
-            
-            // Estratégia 2: Procurar por quebras naturais na planilha
-            identifySubsheetsByBreaks(data);
-            
-            // Estratégia 3: Procurar por padrões de tipos
-            identifySubsheetsByPatterns(data);
-            
-            // Se não encontramos sub-planilhas, criar uma padrão
-            if (subsheets.length === 0) {
-                subsheets.push({
-                    name: 'Planilha Principal',
-                    startRow: 1,
-                    endRow: data.length - 1,
-                    type: 'principal',
-                    rowCount: data.length - 1
-                });
-            }
-            
-            console.log('Sub-planilhas identificadas:', subsheets);
-            
-            // Atualizar informações sobre sub-planilhas
-            updateSubsheetInfo();
-        }
-        
-        // Função para verificar se uma linha é um cabeçalho de sub-planilha
-        function isSubsheetHeader(row, headers) {
-            // Verificar se a linha tem características de cabeçalho de sub-planilha
-            
-            // 1. Linhas com poucas células preenchidas (1-3)
-            const nonEmptyCells = row.filter(cell => 
-                cell !== undefined && cell !== null && cell !== '').length;
-            
-            if (nonEmptyCells >= 1 && nonEmptyCells <= 3) {
-                const rowText = row.join(' ').toLowerCase();
-                
-                // Padrões que indicam cabeçalhos de sub-planilha
-                const subsheetPatterns = [
-                    // Tipos de produtos/serviços
-                    /tipo\s*[a-z0-9]/i, /categoria\s*[a-z0-9]/i, /grupo\s*[a-z0-9]/i,
-                    /modelo\s*[a-z0-9]/i, /versão\s*[a-z0-9]/i, /linha\s*[a-z0-9]/i,
-                    /familia\s*[a-z0-9]/i, /setor\s*[a-z0-9]/i, /classe\s*[a-z0-9]/i,
-                    
-                    // Períodos
-                    /janeiro|fevereiro|março|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro/i,
-                    /trimestre\s*[1-4]/i, /semestre\s*[1-2]/i,
-                    /20\d{2}/, // Anos
-                    
-                    // Localizações/Departamentos
-                    /departamento/i, /seção/i, /divisão/i, /área/i,
-                    /filial/i, /regional/i, /zona/i,
-                    
-                    // Status
-                    /ativo/i, /inativo/i, /pendente/i, /concluído/i,
-                    /aprovado/i, /reprovado/i, /em andamento/i
-                ];
-                
-                for (const pattern of subsheetPatterns) {
-                    if (pattern.test(rowText)) {
-                        return {
-                            name: row.find(cell => cell && cell !== '') || 'Sub-Planilha',
-                            type: 'cabeçalho'
-                        };
-                    }
-                }
-            }
-            
-            // 2. Linhas que são totalmente diferentes das demais (muitas células vazias)
-            const emptyCells = row.filter(cell => 
-                cell === undefined || cell === null || cell === '').length;
-            
-            if (emptyCells >= headers.length - 1) {
-                const firstCell = row.find(cell => cell && cell !== '');
-                if (firstCell) {
-                    return {
-                        name: firstCell,
-                        type: 'separador'
-                    };
-                }
-            }
-            
-            return null;
-        }
-        
-        // Função para encontrar onde uma sub-planilha termina
-        function findSubsheetEnd(data, startRow) {
-            // Procurar pela próxima sub-planilha ou pelo final dos dados
-            for (let i = startRow + 1; i < data.length; i++) {
-                if (isSubsheetHeader(data[i], data[0])) {
-                    return i - 1;
-                }
-                
-                // Se encontrar uma linha completamente vazia, pode ser o fim
-                const isEmptyRow = data[i].every(cell => 
-                    cell === undefined || cell === null || cell === '');
-                if (isEmptyRow) {
-                    // Verificar se as próximas linhas também estão vazias
-                    let emptyCount = 0;
-                    for (let j = i; j < Math.min(i + 3, data.length); j++) {
-                        if (data[j].every(cell => cell === undefined || cell === null || cell === '')) {
-                            emptyCount++;
-                        }
-                    }
-                    if (emptyCount >= 2) {
-                        return i - 1;
-                    }
-                }
-            }
-            
-            return data.length - 1;
-        }
-        
-        // Função para identificar sub-planilhas por quebras naturais
-        function identifySubsheetsByBreaks(data) {
-            let currentSubsheet = {
-                name: 'Seção 1',
-                startRow: 1,
-                type: 'automática'
-            };
-            
-            for (let i = 2; i < data.length; i++) {
-                const row = data[i];
-                const prevRow = data[i - 1];
-                
-                // Verificar se há uma quebra significativa
-                if (isSignificantBreak(row, prevRow)) {
-                    currentSubsheet.endRow = i - 1;
-                    currentSubsheet.rowCount = currentSubsheet.endRow - currentSubsheet.startRow;
-                    
-                    // Só adicionar se tiver um número razoável de linhas
-                    if (currentSubsheet.rowCount >= 2) {
-                        subsheets.push({...currentSubsheet});
-                    }
-                    
-                    currentSubsheet = {
-                        name: `Seção ${subsheets.length + 1}`,
-                        startRow: i,
-                        type: 'automática'
-                    };
-                }
-            }
-            
-            // Adicionar a última sub-planilha
-            if (currentSubsheet.startRow < data.length) {
-                currentSubsheet.endRow = data.length - 1;
-                currentSubsheet.rowCount = currentSubsheet.endRow - currentSubsheet.startRow;
-                if (currentSubsheet.rowCount >= 2) {
-                    subsheets.push({...currentSubsheet});
-                }
-            }
-        }
-        
-        // Função para verificar se há uma quebra significativa entre linhas
-        function isSignificantBreak(currentRow, previousRow) {
-            // Quebra por linha vazia
-            const currentEmpty = currentRow.every(cell => 
-                cell === undefined || cell === null || cell === '');
-            const previousEmpty = previousRow.every(cell => 
-                cell === undefined || cell === null || cell === '');
-            
-            if (currentEmpty && !previousEmpty) {
-                return true;
-            }
-            
-            // Quebra por mudança drástica no padrão de dados
-            let differenceCount = 0;
-            const minLength = Math.min(currentRow.length, previousRow.length);
-            
-            for (let i = 0; i < minLength; i++) {
-                const current = currentRow[i];
-                const previous = previousRow[i];
-                
-                if ((current && !previous) || (!current && previous) || 
-                    (current && previous && current.toString() !== previous.toString())) {
-                    differenceCount++;
-                }
-            }
-            
-            // Se mais de 70% das células são diferentes, é uma quebra
-            return differenceCount > minLength * 0.7;
-        }
-        
-        // Função para identificar sub-planilhas por padrões
-        function identifySubsheetsByPatterns(data) {
-            // Procurar por colunas que podem indicar tipos de sub-planilha
-            for (let colIndex = 0; colIndex < columns.length; colIndex++) {
-                const columnName = columns[colIndex].toLowerCase();
-                
-                // Verificar se esta coluna pode conter tipos
-                if (isTypeColumn(columnName)) {
-                    const uniqueValues = new Set();
-                    
-                    // Coletar valores únicos
-                    for (let rowIndex = 1; rowIndex < data.length; rowIndex++) {
-                        const value = data[rowIndex][colIndex];
-                        if (value && value !== '') {
-                            uniqueValues.add(value);
-                        }
-                    }
-                    
-                    // Criar sub-planilhas para cada tipo único
-                    if (uniqueValues.size > 1 && uniqueValues.size <= 10) {
-                        uniqueValues.forEach(value => {
-                            // Verificar se já não temos esta sub-planilha
-                            const existing = subsheets.find(s => s.name === value);
-                            if (!existing) {
-                                subsheets.push({
-                                    name: value,
-                                    column: columns[colIndex],
-                                    value: value,
-                                    type: 'por tipo',
-                                    rowCount: 0 // Será calculado depois
-                                });
-                            }
-                        });
-                    }
-                }
-            }
-        }
-        
-        // Função para verificar se uma coluna pode conter tipos
-        function isTypeColumn(columnName) {
-            const typeIndicators = [
-                'tipo', 'categoria', 'grupo', 'modelo', 'versão', 'linha',
-                'familia', 'setor', 'classe', 'status', 'departamento'
-            ];
-            
-            return typeIndicators.some(indicator => 
-                columnName.includes(indicator));
-        }
-        
-        // Função para encontrar a sub-planilha de uma linha
-        function findSubsheetForRow(rowObj, rowIndex) {
-            // Primeiro, verificar por sub-planilhas baseadas em tipos
-            for (const subsheet of subsheets) {
-                if (subsheet.column && rowObj[subsheet.column] === subsheet.value) {
-                    return subsheet.name;
-                }
-            }
-            
-            // Depois, verificar por sub-planilhas baseadas em intervalos
-            for (const subsheet of subsheets) {
-                if (subsheet.startRow <= rowIndex && rowIndex <= subsheet.endRow) {
-                    return subsheet.name;
-                }
-            }
-            
-            return 'Principal';
-        }
-        
-        // Função para atualizar informações sobre sub-planilhas
-        function updateSubsheetInfo() {
-            if (subsheets.length === 0) return;
-            
-            // Calcular estatísticas para cada sub-planilha
-            subsheets.forEach(subsheet => {
-                if (!subsheet.rowCount) {
-                    subsheet.rowCount = excelData.filter(row => 
-                        row._subsheet === subsheet.name).length;
-                }
-            });
-            
-            let infoHTML = '<h4>Resumo das Sub-Planilhas:</h4>';
-            infoHTML += '<div class="subsheet-stats">';
-            
-            subsheets.forEach(subsheet => {
-                const rowCount = subsheet.rowCount || 0;
-                infoHTML += `
-                    <div class="stat-card">
-                        <div class="stat-value">${rowCount}</div>
-                        <div class="stat-label">${subsheet.name}</div>
-                    </div>
-                `;
-            });
-            
-            infoHTML += '</div>';
-            subsheetInfo.innerHTML = infoHTML;
-        }
-        
-        // Função para gerar botões de sub-planilha
-        function generateSubsheetButtons() {
-            subsheetsList.innerHTML = '';
-            
-            // Adicionar botão para "Todos"
-            const allButton = document.createElement('button');
-            allButton.className = 'subsheet-btn active';
-            allButton.textContent = 'Todas as Sub-Planilhas';
-            allButton.addEventListener('click', () => {
-                // Remover classe active de todos os botões
-                document.querySelectorAll('.subsheet-btn').forEach(btn => {
-                    btn.classList.remove('active');
-                });
-                // Adicionar classe active ao botão clicado
-                allButton.classList.add('active');
-                
-                currentSubsheet = null;
-                applyFilters();
-            });
-            subsheetsList.appendChild(allButton);
-            
-            // Adicionar botões para cada sub-planilha
-            subsheets.forEach(subsheet => {
-                const subsheetButton = document.createElement('button');
-                subsheetButton.className = 'subsheet-btn';
-                subsheetButton.textContent = subsheet.name;
-                subsheetButton.addEventListener('click', () => {
+                sheetButton.textContent = sheetName;
+                sheetButton.addEventListener('click', () => {
                     // Remover classe active de todos os botões
-                    document.querySelectorAll('.subsheet-btn').forEach(btn => {
+                    document.querySelectorAll('.sheet-btn').forEach(btn => {
                         btn.classList.remove('active');
                     });
                     // Adicionar classe active ao botão clicado
-                    subsheetButton.classList.add('active');
+                    sheetButton.classList.add('active');
                     
-                    currentSubsheet = subsheet.name;
-                    applyFilters();
+                    // Carregar a aba selecionada
+                    loadSheet(sheetName);
                 });
-                subsheetsList.appendChild(subsheetButton);
+                sheetsList.appendChild(sheetButton);
             });
+        }
+        
+        // Função para atualizar informações sobre as abas
+        function updateSheetInfo() {
+            if (sheetNames.length === 0) return;
+            
+            let infoHTML = '<h4>Resumo das Abas:</h4>';
+            infoHTML += '<div class="sheet-stats">';
+            
+            sheetNames.forEach(sheetName => {
+                try {
+                    const worksheet = workbook.Sheets[sheetName];
+                    const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+                    const rowCount = Math.max(0, jsonData.length - 1); // Excluindo cabeçalho
+                    
+                    infoHTML += `
+                        <div class="stat-card">
+                            <div class="stat-value">${rowCount}</div>
+                            <div class="stat-label">${sheetName}</div>
+                        </div>
+                    `;
+                } catch (error) {
+                    console.error(`Erro ao processar aba ${sheetName}:`, error);
+                }
+            });
+            
+            infoHTML += '</div>';
+            sheetInfo.innerHTML = infoHTML;
+        }
+        
+        // Função para atualizar informações da aba atual
+        function updateCurrentSheetInfo() {
+            if (!currentSheetName) return;
+            
+            currentSheetInfo.innerHTML = `
+                <strong>Aba Atual:</strong> ${currentSheetName} 
+                | <strong>Total de Linhas:</strong> ${currentSheetData.length}
+                | <strong>Colunas:</strong> ${columns.length}
+            `;
         }
         
         // Função para identificar colunas numéricas
         function identifyNumericColumns(data) {
             numericColumns = [];
             
+            if (!data[0]) return;
+            
             // Verificar cada coluna
-            for (let colIndex = 0; colIndex < columns.length; colIndex++) {
+            for (let colIndex = 0; colIndex < data[0].length; colIndex++) {
                 let isNumeric = true;
                 let hasNumericValue = false;
                 
@@ -878,8 +649,8 @@
                 }
                 
                 // Se encontramos valores numéricos e não encontramos valores não numéricos
-                if (isNumeric && hasNumericValue) {
-                    numericColumns.push(columns[colIndex]);
+                if (isNumeric && hasNumericValue && data[0][colIndex]) {
+                    numericColumns.push(data[0][colIndex]);
                 }
             }
             
@@ -890,39 +661,7 @@
         function generateFilters() {
             filterRow.innerHTML = '';
             
-            // Adicionar filtro de sub-planilha
-            const subsheetFilterGroup = document.createElement('div');
-            subsheetFilterGroup.className = 'filter-group';
-            
-            const subsheetLabel = document.createElement('label');
-            subsheetLabel.textContent = 'Sub-Planilha';
-            subsheetLabel.setAttribute('for', 'filter-subsheet');
-            
-            const subsheetSelect = document.createElement('select');
-            subsheetSelect.id = 'filter-subsheet';
-            subsheetSelect.dataset.column = '_subsheet';
-            
-            // Adicionar opção vazia
-            const emptyOption = document.createElement('option');
-            emptyOption.value = '';
-            emptyOption.textContent = 'Todas as Sub-Planilhas';
-            subsheetSelect.appendChild(emptyOption);
-            
-            // Adicionar opções para cada sub-planilha
-            const uniqueSubsheets = [...new Set(excelData.map(row => row._subsheet))].filter(value => value !== '');
-            
-            uniqueSubsheets.forEach(value => {
-                const option = document.createElement('option');
-                option.value = value;
-                option.textContent = value;
-                subsheetSelect.appendChild(option);
-            });
-            
-            subsheetFilterGroup.appendChild(subsheetLabel);
-            subsheetFilterGroup.appendChild(subsheetSelect);
-            filterRow.appendChild(subsheetFilterGroup);
-            
-            // Adicionar filtros para outras colunas
+            // Adicionar filtros para cada coluna
             columns.forEach(column => {
                 const filterGroup = document.createElement('div');
                 filterGroup.className = 'filter-group';
@@ -942,7 +681,7 @@
                 select.appendChild(emptyOption);
                 
                 // Obter valores únicos para a coluna
-                const uniqueValues = [...new Set(excelData.map(row => row[column]))].filter(value => value !== '');
+                const uniqueValues = [...new Set(currentSheetData.map(row => row[column]))].filter(value => value !== '');
                 
                 // Adicionar opções
                 uniqueValues.forEach(value => {
@@ -960,22 +699,9 @@
         
         // Função para aplicar filtros
         function applyFilters() {
-            filteredData = [...excelData];
+            filteredData = [...currentSheetData];
             
-            // Aplicar filtro de sub-planilha se selecionado
-            if (currentSubsheet) {
-                filteredData = filteredData.filter(row => row._subsheet === currentSubsheet);
-            } else {
-                // Aplicar filtro de sub-planilha do dropdown se não houver sub-planilha ativa
-                const subsheetFilter = document.getElementById('filter-subsheet');
-                const subsheetFilterValue = subsheetFilter.value;
-                
-                if (subsheetFilterValue) {
-                    filteredData = filteredData.filter(row => row._subsheet === subsheetFilterValue);
-                }
-            }
-            
-            // Aplicar outros filtros
+            // Aplicar filtros para cada coluna
             columns.forEach(column => {
                 const filterElement = document.getElementById(`filter-${column}`);
                 const filterValue = filterElement.value;
@@ -991,7 +717,7 @@
             // Renderizar tabela com dados filtrados
             renderTable();
             
-            showStatus(`Filtros aplicados. ${filteredData.length} de ${excelData.length} registros exibidos.`, 'success');
+            showStatus(`Filtros aplicados. ${filteredData.length} de ${currentSheetData.length} registros exibidos.`, 'success');
         }
         
         // Função para resetar filtros
@@ -1001,22 +727,7 @@
                 filterElement.value = '';
             });
             
-            // Resetar filtro de sub-planilha
-            const subsheetFilter = document.getElementById('filter-subsheet');
-            subsheetFilter.value = '';
-            
-            // Resetar sub-planilha ativa
-            currentSubsheet = null;
-            
-            // Ativar botão "Todos"
-            document.querySelectorAll('.subsheet-btn').forEach(btn => {
-                btn.classList.remove('active');
-            });
-            if (document.querySelectorAll('.subsheet-btn')[0]) {
-                document.querySelectorAll('.subsheet-btn')[0].classList.add('active');
-            }
-            
-            filteredData = [...excelData];
+            filteredData = [...currentSheetData];
             renderTable();
             
             showStatus('Filtros resetados', 'success');
@@ -1035,10 +746,10 @@
                 th.textContent = column;
                 headerRow.appendChild(th);
             });
-            // Adicionar coluna de sub-planilha
-            const subsheetTh = document.createElement('th');
-            subsheetTh.textContent = 'Sub-Planilha';
-            headerRow.appendChild(subsheetTh);
+            // Adicionar coluna da aba de origem
+            const sheetTh = document.createElement('th');
+            sheetTh.textContent = 'Aba Origem';
+            headerRow.appendChild(sheetTh);
             tableHeader.appendChild(headerRow);
             
             // Adicionar dados
@@ -1051,22 +762,7 @@
                 noDataRow.appendChild(noDataCell);
                 tableBody.appendChild(noDataRow);
             } else {
-                let currentDisplaySubsheet = null;
-                
-                filteredData.forEach((row, index) => {
-                    // Adicionar cabeçalho de sub-planilha se mudou de sub-planilha
-                    if (row._subsheet !== currentDisplaySubsheet) {
-                        currentDisplaySubsheet = row._subsheet;
-                        
-                        const subsheetHeaderRow = document.createElement('tr');
-                        subsheetHeaderRow.className = 'subsheet-header';
-                        const subsheetHeaderCell = document.createElement('td');
-                        subsheetHeaderCell.colSpan = columns.length + 1;
-                        subsheetHeaderCell.textContent = `SUB-PLANILHA: ${currentDisplaySubsheet}`;
-                        subsheetHeaderRow.appendChild(subsheetHeaderCell);
-                        tableBody.appendChild(subsheetHeaderRow);
-                    }
-                    
+                filteredData.forEach(row => {
                     const tableRow = document.createElement('tr');
                     
                     columns.forEach(column => {
@@ -1075,10 +771,10 @@
                         tableRow.appendChild(td);
                     });
                     
-                    // Adicionar célula de sub-planilha
-                    const subsheetTd = document.createElement('td');
-                    subsheetTd.textContent = row._subsheet;
-                    tableRow.appendChild(subsheetTd);
+                    // Adicionar célula da aba de origem
+                    const sheetTd = document.createElement('td');
+                    sheetTd.textContent = row._sheet;
+                    tableRow.appendChild(sheetTd);
                     
                     tableBody.appendChild(tableRow);
                 });
@@ -1124,7 +820,7 @@
                 totalsRow.appendChild(td);
             });
             
-            // Célula vazia para a coluna de sub-planilha
+            // Célula vazia para a coluna da aba de origem
             const emptyTd = document.createElement('td');
             emptyTd.textContent = '';
             totalsRow.appendChild(emptyTd);
@@ -1170,10 +866,10 @@
                 // Criar uma nova planilha
                 const ws = XLSX.utils.json_to_sheet(exportData);
                 const wb = XLSX.utils.book_new();
-                XLSX.utils.book_append_sheet(wb, ws, "Dados Filtrados");
+                XLSX.utils.book_append_sheet(wb, ws, `Dados_Filtrados_${currentSheetName}`);
                 
                 // Gerar arquivo e fazer download
-                XLSX.writeFile(wb, "dados_filtrados.xlsx");
+                XLSX.writeFile(wb, `dados_filtrados_${currentSheetName}.xlsx`);
                 
                 showStatus('Dados exportados com sucesso com totais calculados!', 'success');
             } catch (error) {
