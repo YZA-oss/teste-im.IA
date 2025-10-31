@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Filtro de Planilhas Excel - Com Identificação de Grupos</title>
+    <title>Filtro de Planilhas Excel - Com Identificação de Sub-Planilhas</title>
     <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
     <style>
         * {
@@ -88,7 +88,7 @@
             color: #7f8c8d;
         }
         
-        .groups-panel {
+        .subsheets-panel {
             background: #f8f9fa;
             border-radius: 8px;
             padding: 20px;
@@ -96,14 +96,14 @@
             display: none;
         }
         
-        .groups-list {
+        .subsheets-list {
             display: flex;
             flex-wrap: wrap;
             gap: 10px;
             margin-top: 15px;
         }
         
-        .group-btn {
+        .subsheet-btn {
             background: #e9ecef;
             border: 1px solid #dee2e6;
             border-radius: 5px;
@@ -112,11 +112,11 @@
             transition: all 0.3s;
         }
         
-        .group-btn:hover {
+        .subsheet-btn:hover {
             background: #dee2e6;
         }
         
-        .group-btn.active {
+        .subsheet-btn.active {
             background: #3498db;
             color: white;
             border-color: #2980b9;
@@ -263,21 +263,43 @@
             border-top: 2px solid #3498db;
         }
         
-        .group-header {
+        .subsheet-header {
             background-color: #e8f4fc !important;
             font-weight: bold;
             font-size: 1.1em;
         }
         
-        .group-row {
-            background-color: #f0f8ff !important;
-        }
-        
-        .groups-info {
+        .subsheet-info {
             background: #e8f4fc;
             border-radius: 5px;
             padding: 15px;
             margin: 15px 0;
+        }
+        
+        .subsheet-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+        
+        .stat-card {
+            background: white;
+            border-radius: 5px;
+            padding: 15px;
+            text-align: center;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        
+        .stat-value {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #3498db;
+        }
+        
+        .stat-label {
+            font-size: 0.9em;
+            color: #7f8c8d;
         }
         
         @media (max-width: 768px) {
@@ -289,15 +311,19 @@
                 min-width: 100%;
             }
             
-            .groups-list {
+            .subsheets-list {
                 flex-direction: column;
+            }
+            
+            .subsheet-stats {
+                grid-template-columns: 1fr;
             }
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Filtro de Planilhas Excel - Com Identificação de Grupos</h1>
+        <h1>Filtro de Planilhas Excel - Com Identificação de Sub-Planilhas</h1>
         
         <div class="upload-section">
             <h3>Faça upload da sua planilha Excel</h3>
@@ -309,14 +335,14 @@
         
         <div class="status" id="statusMessage"></div>
         
-        <div class="groups-panel" id="groupsPanel">
-            <h3>Grupos Identificados</h3>
-            <p>Clique em um grupo para filtrar os dados:</p>
-            <div class="groups-list" id="groupsList">
-                <!-- Botões de grupo serão gerados dinamicamente aqui -->
+        <div class="subsheets-panel" id="subsheetsPanel">
+            <h3>Sub-Planilhas Identificadas</h3>
+            <p>Clique em uma sub-planilha para filtrar os dados:</p>
+            <div class="subsheets-list" id="subsheetsList">
+                <!-- Botões de sub-planilha serão gerados dinamicamente aqui -->
             </div>
-            <div class="groups-info" id="groupsInfo">
-                <!-- Informações sobre os grupos identificados -->
+            <div class="subsheet-info" id="subsheetInfo">
+                <!-- Informações sobre as sub-planilhas identificadas -->
             </div>
         </div>
         
@@ -353,16 +379,16 @@
         let filteredData = [];
         let columns = [];
         let numericColumns = [];
-        let groups = [];
-        let currentGroup = null;
+        let subsheets = [];
+        let currentSubsheet = null;
         
         // Elementos DOM
         const fileInput = document.getElementById('fileInput');
         const fileInfo = document.getElementById('fileInfo');
         const statusMessage = document.getElementById('statusMessage');
-        const groupsPanel = document.getElementById('groupsPanel');
-        const groupsList = document.getElementById('groupsList');
-        const groupsInfo = document.getElementById('groupsInfo');
+        const subsheetsPanel = document.getElementById('subsheetsPanel');
+        const subsheetsList = document.getElementById('subsheetsList');
+        const subsheetInfo = document.getElementById('subsheetInfo');
         const filtersSection = document.getElementById('filtersSection');
         const filterRow = document.getElementById('filterRow');
         const resetFiltersBtn = document.getElementById('resetFilters');
@@ -439,8 +465,8 @@
             // Identificar colunas numéricas
             identifyNumericColumns(data);
             
-            // Identificar grupos
-            identifyGroups(data);
+            // Identificar sub-planilhas
+            identifySubsheets(data);
             
             // Converter linhas de dados em objetos
             excelData = [];
@@ -452,16 +478,16 @@
                     rowObj[columns[j]] = row[j] !== undefined ? row[j] : '';
                 }
                 
-                // Adicionar informações de grupo
-                rowObj._group = findGroupForRow(rowObj, i);
+                // Adicionar informações de sub-planilha
+                rowObj._subsheet = findSubsheetForRow(rowObj, i);
                 
                 excelData.push(rowObj);
             }
             
             filteredData = [...excelData];
             
-            // Gerar botões de grupo
-            generateGroupButtons();
+            // Gerar botões de sub-planilha
+            generateSubsheetButtons();
             
             // Gerar filtros
             generateFilters();
@@ -470,247 +496,354 @@
             renderTable();
             
             // Mostrar seções
-            groupsPanel.style.display = 'block';
+            subsheetsPanel.style.display = 'block';
             filtersSection.style.display = 'block';
             tableContainer.style.display = 'block';
             exportSection.style.display = 'block';
         }
         
-        // Função para identificar grupos na planilha
-        function identifyGroups(data) {
-            groups = [];
+        // Função para identificar sub-planilhas dentro da planilha principal
+        function identifySubsheets(data) {
+            subsheets = [];
             
-            // Estratégia 1: Procurar por linhas que são cabeçalhos de grupo
+            // Estratégia 1: Procurar por cabeçalhos de sub-planilha
             for (let i = 1; i < data.length; i++) {
                 const row = data[i];
                 
-                // Verificar se esta linha é um cabeçalho de grupo
-                const groupInfo = isGroupHeader(row);
-                if (groupInfo) {
-                    groups.push({
-                        name: groupInfo.name,
-                        rowIndex: i,
-                        type: 'header',
-                        column: groupInfo.column
+                // Verificar se esta linha é um cabeçalho de sub-planilha
+                const subsheetInfo = isSubsheetHeader(row, data[0]);
+                if (subsheetInfo) {
+                    // Encontrar onde esta sub-planilha termina
+                    const endRow = findSubsheetEnd(data, i);
+                    
+                    subsheets.push({
+                        name: subsheetInfo.name,
+                        startRow: i,
+                        endRow: endRow,
+                        type: subsheetInfo.type,
+                        rowCount: endRow - i
                     });
+                    
+                    // Pular para o final desta sub-planilha
+                    i = endRow;
                 }
             }
             
-            // Estratégia 2: Procurar por valores de grupo em colunas específicas
-            identifyGroupsByColumns(data);
+            // Estratégia 2: Procurar por quebras naturais na planilha
+            identifySubsheetsByBreaks(data);
             
-            // Se não encontramos grupos, criar um padrão
-            if (groups.length === 0) {
-                groups.push({
-                    name: 'Todos os Dados',
-                    rowIndex: 1,
-                    type: 'default'
+            // Estratégia 3: Procurar por padrões de tipos
+            identifySubsheetsByPatterns(data);
+            
+            // Se não encontramos sub-planilhas, criar uma padrão
+            if (subsheets.length === 0) {
+                subsheets.push({
+                    name: 'Planilha Principal',
+                    startRow: 1,
+                    endRow: data.length - 1,
+                    type: 'principal',
+                    rowCount: data.length - 1
                 });
             }
             
-            console.log('Grupos identificados:', groups);
+            console.log('Sub-planilhas identificadas:', subsheets);
             
-            // Atualizar informações sobre grupos
-            updateGroupsInfo();
+            // Atualizar informações sobre sub-planilhas
+            updateSubsheetInfo();
         }
         
-        // Função para verificar se uma linha é um cabeçalho de grupo
-        function isGroupHeader(row) {
-            for (let i = 0; i < row.length; i++) {
-                const cell = row[i];
-                if (cell && typeof cell === 'string') {
-                    const cellValue = cell.toString().toUpperCase().trim();
+        // Função para verificar se uma linha é um cabeçalho de sub-planilha
+        function isSubsheetHeader(row, headers) {
+            // Verificar se a linha tem características de cabeçalho de sub-planilha
+            
+            // 1. Linhas com poucas células preenchidas (1-3)
+            const nonEmptyCells = row.filter(cell => 
+                cell !== undefined && cell !== null && cell !== '').length;
+            
+            if (nonEmptyCells >= 1 && nonEmptyCells <= 3) {
+                const rowText = row.join(' ').toLowerCase();
+                
+                // Padrões que indicam cabeçalhos de sub-planilha
+                const subsheetPatterns = [
+                    // Tipos de produtos/serviços
+                    /tipo\s*[a-z0-9]/i, /categoria\s*[a-z0-9]/i, /grupo\s*[a-z0-9]/i,
+                    /modelo\s*[a-z0-9]/i, /versão\s*[a-z0-9]/i, /linha\s*[a-z0-9]/i,
+                    /familia\s*[a-z0-9]/i, /setor\s*[a-z0-9]/i, /classe\s*[a-z0-9]/i,
                     
-                    // Padrões para identificar grupos
-                    const groupPatterns = [
-                        /GRUPO\s*\d+/i, // GRUPO 1, GRUPO 2, etc.
-                        /GRUPO\s*\d+\s*[A-Z]+/i, // GRUPO 1 UV, GRUPO 2 FOSCO, etc.
-                        /CATEGORIA\s*\d+/i,
-                        /TIPO\s*\d+/i,
-                        /SETOR\s*\d+/i,
-                        /DIVIS[AO]\s*\d+/i
-                    ];
+                    // Períodos
+                    /janeiro|fevereiro|março|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro/i,
+                    /trimestre\s*[1-4]/i, /semestre\s*[1-2]/i,
+                    /20\d{2}/, // Anos
                     
-                    for (const pattern of groupPatterns) {
-                        if (pattern.test(cellValue)) {
-                            return {
-                                name: cell.trim(),
-                                column: i
-                            };
-                        }
-                    }
+                    // Localizações/Departamentos
+                    /departamento/i, /seção/i, /divisão/i, /área/i,
+                    /filial/i, /regional/i, /zona/i,
                     
-                    // Verificar também se é um valor que parece ser um grupo
-                    if (isLikelyGroupName(cellValue)) {
+                    // Status
+                    /ativo/i, /inativo/i, /pendente/i, /concluído/i,
+                    /aprovado/i, /reprovado/i, /em andamento/i
+                ];
+                
+                for (const pattern of subsheetPatterns) {
+                    if (pattern.test(rowText)) {
                         return {
-                            name: cell.trim(),
-                            column: i
+                            name: row.find(cell => cell && cell !== '') || 'Sub-Planilha',
+                            type: 'cabeçalho'
                         };
                     }
+                }
+            }
+            
+            // 2. Linhas que são totalmente diferentes das demais (muitas células vazias)
+            const emptyCells = row.filter(cell => 
+                cell === undefined || cell === null || cell === '').length;
+            
+            if (emptyCells >= headers.length - 1) {
+                const firstCell = row.find(cell => cell && cell !== '');
+                if (firstCell) {
+                    return {
+                        name: firstCell,
+                        type: 'separador'
+                    };
                 }
             }
             
             return null;
         }
         
-        // Função para verificar se um valor parece ser um nome de grupo
-        function isLikelyGroupName(value) {
-            const strValue = value.toString().toUpperCase();
-            
-            // Padrões que indicam um nome de grupo
-            const indicators = [
-                /^GRUPO/i,
-                /^CATEGORIA/i,
-                /^TIPO/i,
-                /^SETOR/i,
-                /^DIVIS[AO]/i,
-                /^[A-Z]+\s*\d+/, // Letras seguidas de números
-                /^\d+\s*[A-Z]+/  // Números seguidos de letras
-            ];
-            
-            return indicators.some(indicator => indicator.test(strValue));
-        }
-        
-        // Função para identificar grupos por colunas
-        function identifyGroupsByColumns(data) {
-            // Procurar por colunas que contêm valores de grupo
-            for (let colIndex = 0; colIndex < columns.length; colIndex++) {
-                const columnName = columns[colIndex];
-                const uniqueValues = new Set();
+        // Função para encontrar onde uma sub-planilha termina
+        function findSubsheetEnd(data, startRow) {
+            // Procurar pela próxima sub-planilha ou pelo final dos dados
+            for (let i = startRow + 1; i < data.length; i++) {
+                if (isSubsheetHeader(data[i], data[0])) {
+                    return i - 1;
+                }
                 
-                // Coletar valores únicos
-                for (let rowIndex = 1; rowIndex < data.length; rowIndex++) {
-                    const value = data[rowIndex][colIndex];
-                    if (value && value !== '') {
-                        uniqueValues.add(value);
+                // Se encontrar uma linha completamente vazia, pode ser o fim
+                const isEmptyRow = data[i].every(cell => 
+                    cell === undefined || cell === null || cell === '');
+                if (isEmptyRow) {
+                    // Verificar se as próximas linhas também estão vazias
+                    let emptyCount = 0;
+                    for (let j = i; j < Math.min(i + 3, data.length); j++) {
+                        if (data[j].every(cell => cell === undefined || cell === null || cell === '')) {
+                            emptyCount++;
+                        }
+                    }
+                    if (emptyCount >= 2) {
+                        return i - 1;
                     }
                 }
+            }
+            
+            return data.length - 1;
+        }
+        
+        // Função para identificar sub-planilhas por quebras naturais
+        function identifySubsheetsByBreaks(data) {
+            let currentSubsheet = {
+                name: 'Seção 1',
+                startRow: 1,
+                type: 'automática'
+            };
+            
+            for (let i = 2; i < data.length; i++) {
+                const row = data[i];
+                const prevRow = data[i - 1];
                 
-                // Se temos valores que podem ser grupos
-                if (uniqueValues.size > 1 && uniqueValues.size <= 20) {
-                    uniqueValues.forEach(value => {
-                        if (isLikelyGroupValue(value)) {
-                            // Verificar se já não temos este grupo
-                            const existingGroup = groups.find(g => g.name === value);
-                            if (!existingGroup) {
-                                groups.push({
+                // Verificar se há uma quebra significativa
+                if (isSignificantBreak(row, prevRow)) {
+                    currentSubsheet.endRow = i - 1;
+                    currentSubsheet.rowCount = currentSubsheet.endRow - currentSubsheet.startRow;
+                    
+                    // Só adicionar se tiver um número razoável de linhas
+                    if (currentSubsheet.rowCount >= 2) {
+                        subsheets.push({...currentSubsheet});
+                    }
+                    
+                    currentSubsheet = {
+                        name: `Seção ${subsheets.length + 1}`,
+                        startRow: i,
+                        type: 'automática'
+                    };
+                }
+            }
+            
+            // Adicionar a última sub-planilha
+            if (currentSubsheet.startRow < data.length) {
+                currentSubsheet.endRow = data.length - 1;
+                currentSubsheet.rowCount = currentSubsheet.endRow - currentSubsheet.startRow;
+                if (currentSubsheet.rowCount >= 2) {
+                    subsheets.push({...currentSubsheet});
+                }
+            }
+        }
+        
+        // Função para verificar se há uma quebra significativa entre linhas
+        function isSignificantBreak(currentRow, previousRow) {
+            // Quebra por linha vazia
+            const currentEmpty = currentRow.every(cell => 
+                cell === undefined || cell === null || cell === '');
+            const previousEmpty = previousRow.every(cell => 
+                cell === undefined || cell === null || cell === '');
+            
+            if (currentEmpty && !previousEmpty) {
+                return true;
+            }
+            
+            // Quebra por mudança drástica no padrão de dados
+            let differenceCount = 0;
+            const minLength = Math.min(currentRow.length, previousRow.length);
+            
+            for (let i = 0; i < minLength; i++) {
+                const current = currentRow[i];
+                const previous = previousRow[i];
+                
+                if ((current && !previous) || (!current && previous) || 
+                    (current && previous && current.toString() !== previous.toString())) {
+                    differenceCount++;
+                }
+            }
+            
+            // Se mais de 70% das células são diferentes, é uma quebra
+            return differenceCount > minLength * 0.7;
+        }
+        
+        // Função para identificar sub-planilhas por padrões
+        function identifySubsheetsByPatterns(data) {
+            // Procurar por colunas que podem indicar tipos de sub-planilha
+            for (let colIndex = 0; colIndex < columns.length; colIndex++) {
+                const columnName = columns[colIndex].toLowerCase();
+                
+                // Verificar se esta coluna pode conter tipos
+                if (isTypeColumn(columnName)) {
+                    const uniqueValues = new Set();
+                    
+                    // Coletar valores únicos
+                    for (let rowIndex = 1; rowIndex < data.length; rowIndex++) {
+                        const value = data[rowIndex][colIndex];
+                        if (value && value !== '') {
+                            uniqueValues.add(value);
+                        }
+                    }
+                    
+                    // Criar sub-planilhas para cada tipo único
+                    if (uniqueValues.size > 1 && uniqueValues.size <= 10) {
+                        uniqueValues.forEach(value => {
+                            // Verificar se já não temos esta sub-planilha
+                            const existing = subsheets.find(s => s.name === value);
+                            if (!existing) {
+                                subsheets.push({
                                     name: value,
-                                    column: columnName,
+                                    column: columns[colIndex],
                                     value: value,
-                                    type: 'category'
+                                    type: 'por tipo',
+                                    rowCount: 0 // Será calculado depois
                                 });
                             }
-                        }
-                    });
+                        });
+                    }
                 }
             }
         }
         
-        // Função para verificar se um valor parece ser um valor de grupo
-        function isLikelyGroupValue(value) {
-            if (!value || typeof value !== 'string') return false;
-            
-            const strValue = value.toString().toUpperCase();
-            
-            // Padrões que indicam valores de grupo
-            const patterns = [
-                /GRUPO/i,
-                /CATEGORIA/i,
-                /TIPO/i,
-                /SETOR/i,
-                /DIVIS[AO]/i,
-                /^[A-Z]+\s*\d+/, // Letras seguidas de números (ex: UV 1, FOSCO 2)
-                /^\d+\s*[A-Z]+/,  // Números seguidos de letras (ex: 1 UV, 2 FOSCO)
-                /^[A-Z]{2,}$/,    // Siglas (ex: UV, FOSCO, etc.)
-                /^\d+$/,          // Apenas números
+        // Função para verificar se uma coluna pode conter tipos
+        function isTypeColumn(columnName) {
+            const typeIndicators = [
+                'tipo', 'categoria', 'grupo', 'modelo', 'versão', 'linha',
+                'familia', 'setor', 'classe', 'status', 'departamento'
             ];
             
-            return patterns.some(pattern => pattern.test(strValue));
+            return typeIndicators.some(indicator => 
+                columnName.includes(indicator));
         }
         
-        // Função para encontrar o grupo de uma linha
-        function findGroupForRow(rowObj, rowIndex) {
-            // Primeiro, verificar se esta linha é um cabeçalho de grupo
-            for (const group of groups) {
-                if (group.rowIndex === rowIndex) {
-                    return group.name;
+        // Função para encontrar a sub-planilha de uma linha
+        function findSubsheetForRow(rowObj, rowIndex) {
+            // Primeiro, verificar por sub-planilhas baseadas em tipos
+            for (const subsheet of subsheets) {
+                if (subsheet.column && rowObj[subsheet.column] === subsheet.value) {
+                    return subsheet.name;
                 }
             }
             
-            // Depois, verificar por grupos baseados em colunas
-            for (const group of groups) {
-                if (group.column && rowObj[group.column] === group.value) {
-                    return group.name;
+            // Depois, verificar por sub-planilhas baseadas em intervalos
+            for (const subsheet of subsheets) {
+                if (subsheet.startRow <= rowIndex && rowIndex <= subsheet.endRow) {
+                    return subsheet.name;
                 }
             }
             
-            // Se não encontrou grupo específico, encontrar o grupo mais próximo acima
-            let closestGroup = 'Geral';
-            let closestDistance = Infinity;
-            
-            for (const group of groups) {
-                if (group.rowIndex < rowIndex && (rowIndex - group.rowIndex) < closestDistance) {
-                    closestDistance = rowIndex - group.rowIndex;
-                    closestGroup = group.name;
-                }
-            }
-            
-            return closestGroup;
+            return 'Principal';
         }
         
-        // Função para atualizar informações sobre grupos
-        function updateGroupsInfo() {
-            if (groups.length === 0) return;
+        // Função para atualizar informações sobre sub-planilhas
+        function updateSubsheetInfo() {
+            if (subsheets.length === 0) return;
             
-            let infoHTML = '<h4>Grupos Encontrados:</h4><ul>';
-            
-            groups.forEach(group => {
-                const rowCount = excelData.filter(row => row._group === group.name).length;
-                infoHTML += `<li><strong>${group.name}</strong>: ${rowCount} linha(s)</li>`;
+            // Calcular estatísticas para cada sub-planilha
+            subsheets.forEach(subsheet => {
+                if (!subsheet.rowCount) {
+                    subsheet.rowCount = excelData.filter(row => 
+                        row._subsheet === subsheet.name).length;
+                }
             });
             
-            infoHTML += '</ul>';
-            groupsInfo.innerHTML = infoHTML;
+            let infoHTML = '<h4>Resumo das Sub-Planilhas:</h4>';
+            infoHTML += '<div class="subsheet-stats">';
+            
+            subsheets.forEach(subsheet => {
+                const rowCount = subsheet.rowCount || 0;
+                infoHTML += `
+                    <div class="stat-card">
+                        <div class="stat-value">${rowCount}</div>
+                        <div class="stat-label">${subsheet.name}</div>
+                    </div>
+                `;
+            });
+            
+            infoHTML += '</div>';
+            subsheetInfo.innerHTML = infoHTML;
         }
         
-        // Função para gerar botões de grupo
-        function generateGroupButtons() {
-            groupsList.innerHTML = '';
+        // Função para gerar botões de sub-planilha
+        function generateSubsheetButtons() {
+            subsheetsList.innerHTML = '';
             
             // Adicionar botão para "Todos"
             const allButton = document.createElement('button');
-            allButton.className = 'group-btn active';
-            allButton.textContent = 'Todos os Grupos';
+            allButton.className = 'subsheet-btn active';
+            allButton.textContent = 'Todas as Sub-Planilhas';
             allButton.addEventListener('click', () => {
                 // Remover classe active de todos os botões
-                document.querySelectorAll('.group-btn').forEach(btn => {
+                document.querySelectorAll('.subsheet-btn').forEach(btn => {
                     btn.classList.remove('active');
                 });
                 // Adicionar classe active ao botão clicado
                 allButton.classList.add('active');
                 
-                currentGroup = null;
+                currentSubsheet = null;
                 applyFilters();
             });
-            groupsList.appendChild(allButton);
+            subsheetsList.appendChild(allButton);
             
-            // Adicionar botões para cada grupo
-            groups.forEach(group => {
-                const groupButton = document.createElement('button');
-                groupButton.className = 'group-btn';
-                groupButton.textContent = group.name;
-                groupButton.addEventListener('click', () => {
+            // Adicionar botões para cada sub-planilha
+            subsheets.forEach(subsheet => {
+                const subsheetButton = document.createElement('button');
+                subsheetButton.className = 'subsheet-btn';
+                subsheetButton.textContent = subsheet.name;
+                subsheetButton.addEventListener('click', () => {
                     // Remover classe active de todos os botões
-                    document.querySelectorAll('.group-btn').forEach(btn => {
+                    document.querySelectorAll('.subsheet-btn').forEach(btn => {
                         btn.classList.remove('active');
                     });
                     // Adicionar classe active ao botão clicado
-                    groupButton.classList.add('active');
+                    subsheetButton.classList.add('active');
                     
-                    currentGroup = group.name;
+                    currentSubsheet = subsheet.name;
                     applyFilters();
                 });
-                groupsList.appendChild(groupButton);
+                subsheetsList.appendChild(subsheetButton);
             });
         }
         
@@ -757,37 +890,37 @@
         function generateFilters() {
             filterRow.innerHTML = '';
             
-            // Adicionar filtro de grupo
-            const groupFilterGroup = document.createElement('div');
-            groupFilterGroup.className = 'filter-group';
+            // Adicionar filtro de sub-planilha
+            const subsheetFilterGroup = document.createElement('div');
+            subsheetFilterGroup.className = 'filter-group';
             
-            const groupLabel = document.createElement('label');
-            groupLabel.textContent = 'Grupo';
-            groupLabel.setAttribute('for', 'filter-group');
+            const subsheetLabel = document.createElement('label');
+            subsheetLabel.textContent = 'Sub-Planilha';
+            subsheetLabel.setAttribute('for', 'filter-subsheet');
             
-            const groupSelect = document.createElement('select');
-            groupSelect.id = 'filter-group';
-            groupSelect.dataset.column = '_group';
+            const subsheetSelect = document.createElement('select');
+            subsheetSelect.id = 'filter-subsheet';
+            subsheetSelect.dataset.column = '_subsheet';
             
             // Adicionar opção vazia
             const emptyOption = document.createElement('option');
             emptyOption.value = '';
-            emptyOption.textContent = 'Todos os Grupos';
-            groupSelect.appendChild(emptyOption);
+            emptyOption.textContent = 'Todas as Sub-Planilhas';
+            subsheetSelect.appendChild(emptyOption);
             
-            // Adicionar opções para cada grupo
-            const uniqueGroups = [...new Set(excelData.map(row => row._group))].filter(value => value !== '');
+            // Adicionar opções para cada sub-planilha
+            const uniqueSubsheets = [...new Set(excelData.map(row => row._subsheet))].filter(value => value !== '');
             
-            uniqueGroups.forEach(value => {
+            uniqueSubsheets.forEach(value => {
                 const option = document.createElement('option');
                 option.value = value;
                 option.textContent = value;
-                groupSelect.appendChild(option);
+                subsheetSelect.appendChild(option);
             });
             
-            groupFilterGroup.appendChild(groupLabel);
-            groupFilterGroup.appendChild(groupSelect);
-            filterRow.appendChild(groupFilterGroup);
+            subsheetFilterGroup.appendChild(subsheetLabel);
+            subsheetFilterGroup.appendChild(subsheetSelect);
+            filterRow.appendChild(subsheetFilterGroup);
             
             // Adicionar filtros para outras colunas
             columns.forEach(column => {
@@ -829,16 +962,16 @@
         function applyFilters() {
             filteredData = [...excelData];
             
-            // Aplicar filtro de grupo se selecionado
-            if (currentGroup) {
-                filteredData = filteredData.filter(row => row._group === currentGroup);
+            // Aplicar filtro de sub-planilha se selecionado
+            if (currentSubsheet) {
+                filteredData = filteredData.filter(row => row._subsheet === currentSubsheet);
             } else {
-                // Aplicar filtro de grupo do dropdown se não houver grupo ativo
-                const groupFilter = document.getElementById('filter-group');
-                const groupFilterValue = groupFilter.value;
+                // Aplicar filtro de sub-planilha do dropdown se não houver sub-planilha ativa
+                const subsheetFilter = document.getElementById('filter-subsheet');
+                const subsheetFilterValue = subsheetFilter.value;
                 
-                if (groupFilterValue) {
-                    filteredData = filteredData.filter(row => row._group === groupFilterValue);
+                if (subsheetFilterValue) {
+                    filteredData = filteredData.filter(row => row._subsheet === subsheetFilterValue);
                 }
             }
             
@@ -868,19 +1001,19 @@
                 filterElement.value = '';
             });
             
-            // Resetar filtro de grupo
-            const groupFilter = document.getElementById('filter-group');
-            groupFilter.value = '';
+            // Resetar filtro de sub-planilha
+            const subsheetFilter = document.getElementById('filter-subsheet');
+            subsheetFilter.value = '';
             
-            // Resetar grupo ativo
-            currentGroup = null;
+            // Resetar sub-planilha ativa
+            currentSubsheet = null;
             
             // Ativar botão "Todos"
-            document.querySelectorAll('.group-btn').forEach(btn => {
+            document.querySelectorAll('.subsheet-btn').forEach(btn => {
                 btn.classList.remove('active');
             });
-            if (document.querySelectorAll('.group-btn')[0]) {
-                document.querySelectorAll('.group-btn')[0].classList.add('active');
+            if (document.querySelectorAll('.subsheet-btn')[0]) {
+                document.querySelectorAll('.subsheet-btn')[0].classList.add('active');
             }
             
             filteredData = [...excelData];
@@ -902,10 +1035,10 @@
                 th.textContent = column;
                 headerRow.appendChild(th);
             });
-            // Adicionar coluna de grupo
-            const groupTh = document.createElement('th');
-            groupTh.textContent = 'Grupo';
-            headerRow.appendChild(groupTh);
+            // Adicionar coluna de sub-planilha
+            const subsheetTh = document.createElement('th');
+            subsheetTh.textContent = 'Sub-Planilha';
+            headerRow.appendChild(subsheetTh);
             tableHeader.appendChild(headerRow);
             
             // Adicionar dados
@@ -918,31 +1051,23 @@
                 noDataRow.appendChild(noDataCell);
                 tableBody.appendChild(noDataRow);
             } else {
-                let currentDisplayGroup = null;
+                let currentDisplaySubsheet = null;
                 
                 filteredData.forEach((row, index) => {
-                    // Verificar se esta linha é um cabeçalho de grupo
-                    const isGroupHeader = groups.some(group => 
-                        group.name === row._group && group.rowIndex === excelData.findIndex(r => r === row) + 1
-                    );
-                    
-                    // Adicionar cabeçalho de grupo se mudou de grupo
-                    if (row._group !== currentDisplayGroup) {
-                        currentDisplayGroup = row._group;
+                    // Adicionar cabeçalho de sub-planilha se mudou de sub-planilha
+                    if (row._subsheet !== currentDisplaySubsheet) {
+                        currentDisplaySubsheet = row._subsheet;
                         
-                        const groupHeaderRow = document.createElement('tr');
-                        groupHeaderRow.className = 'group-header';
-                        const groupHeaderCell = document.createElement('td');
-                        groupHeaderCell.colSpan = columns.length + 1;
-                        groupHeaderCell.textContent = `GRUPO: ${currentDisplayGroup}`;
-                        groupHeaderRow.appendChild(groupHeaderCell);
-                        tableBody.appendChild(groupHeaderRow);
+                        const subsheetHeaderRow = document.createElement('tr');
+                        subsheetHeaderRow.className = 'subsheet-header';
+                        const subsheetHeaderCell = document.createElement('td');
+                        subsheetHeaderCell.colSpan = columns.length + 1;
+                        subsheetHeaderCell.textContent = `SUB-PLANILHA: ${currentDisplaySubsheet}`;
+                        subsheetHeaderRow.appendChild(subsheetHeaderCell);
+                        tableBody.appendChild(subsheetHeaderRow);
                     }
                     
                     const tableRow = document.createElement('tr');
-                    if (isGroupHeader) {
-                        tableRow.className = 'group-row';
-                    }
                     
                     columns.forEach(column => {
                         const td = document.createElement('td');
@@ -950,10 +1075,10 @@
                         tableRow.appendChild(td);
                     });
                     
-                    // Adicionar célula de grupo
-                    const groupTd = document.createElement('td');
-                    groupTd.textContent = row._group;
-                    tableRow.appendChild(groupTd);
+                    // Adicionar célula de sub-planilha
+                    const subsheetTd = document.createElement('td');
+                    subsheetTd.textContent = row._subsheet;
+                    tableRow.appendChild(subsheetTd);
                     
                     tableBody.appendChild(tableRow);
                 });
@@ -999,7 +1124,7 @@
                 totalsRow.appendChild(td);
             });
             
-            // Célula vazia para a coluna de grupo
+            // Célula vazia para a coluna de sub-planilha
             const emptyTd = document.createElement('td');
             emptyTd.textContent = '';
             totalsRow.appendChild(emptyTd);
