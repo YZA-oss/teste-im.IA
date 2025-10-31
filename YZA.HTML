@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Filtro de Planilhas Excel</title>
+    <title>Filtro de Planilhas Excel - Com Identificação de Separações</title>
     <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
     <style>
         * {
@@ -33,6 +33,13 @@
             text-align: center;
             margin-bottom: 30px;
             color: #2c3e50;
+        }
+        
+        h2 {
+            margin: 25px 0 15px;
+            color: #3498db;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
         }
         
         .upload-section {
@@ -74,6 +81,40 @@
             margin-top: 15px;
             font-size: 14px;
             color: #7f8c8d;
+        }
+        
+        .sections-panel {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 30px;
+            display: none;
+        }
+        
+        .sections-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        
+        .section-btn {
+            background: #e9ecef;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 8px 15px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .section-btn:hover {
+            background: #dee2e6;
+        }
+        
+        .section-btn.active {
+            background: #3498db;
+            color: white;
+            border-color: #2980b9;
         }
         
         .filters-section {
@@ -212,6 +253,733 @@
             background-color: #f8f9fa;
             font-weight: bold;
         }
+        
+        .totals-row td {
+            border-top: 2px solid #3498db;
+        }
+        
+        .section-header {
+            background-color: #e8f4fc !important;
+            font-weight: bold;
+        }
+        
+        @media (max-width: 768px) {
+            .filter-row {
+                flex-direction: column;
+            }
+            
+            .filter-group {
+                min-width: 100%;
+            }
+            
+            .sections-list {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Filtro de Planilhas Excel - Com Identificação de Separações</h1>
+        
+        <div class="upload-section">
+            <h3>Faça upload da sua planilha Excel</h3>
+            <p>Arquivos suportados: .xlsx, .xls</p>
+            <label for="fileInput" class="upload-btn">Selecionar Arquivo</label>
+            <input type="file" id="fileInput" accept=".xlsx, .xls">
+            <div class="file-info" id="fileInfo">Nenhum arquivo selecionado</div>
+        </div>
+        
+        <div class="status" id="statusMessage"></div>
+        
+        <div class="sections-panel" id="sectionsPanel">
+            <h3>Separações Identificadas</h3>
+            <p>Clique em uma separação para filtrar os dados:</p>
+            <div class="sections-list" id="sectionsList">
+                <!-- Botões de separação serão gerados dinamicamente aqui -->
+            </div>
+        </div>
+        
+        <div class="filters-section" id="filtersSection">
+            <h3>Filtros</h3>
+            <div class="filter-row" id="filterRow">
+                <!-- Filtros serão gerados dinamicamente aqui -->
+            </div>
+            <div class="actions">
+                <button class="btn btn-secondary" id="resetFilters">Limpar Filtros</button>
+                <button class="btn btn-primary" id="applyFilters">Aplicar Filtros</button>
+            </div>
+        </div>
+        
+        <div class="table-container" id="tableContainer">
+            <table id="dataTable">
+                <thead id="tableHeader">
+                    <!-- Cabeçalho da tabela será gerado dinamicamente -->
+                </thead>
+                <tbody id="tableBody">
+                    <!-- Dados da tabela serão gerados dinamicamente -->
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="export-section" id="exportSection">
+            <button class="btn btn-primary" id="exportBtn">Exportar Dados Filtrados</button>
+        </div>
+    </div>
+
+    <script>
+        // Variáveis globais
+        let excelData = [];
+        let filteredData = [];
+        let columns = [];
+        let numericColumns = [];
+        let sections = [];
+        let currentSection = null;
+        
+        // Elementos DOM
+        const fileInput = document.getElementById('fileInput');
+        const fileInfo = document.getElementById('fileInfo');
+        const statusMessage = document.getElementById('statusMessage');
+        const sectionsPanel = document.getElementById('sectionsPanel');
+        const sectionsList = document.getElementById('sectionsList');
+        const filtersSection = document.getElementById('filtersSection');
+        const filterRow = document.getElementById('filterRow');
+        const resetFiltersBtn = document.getElementById('resetFilters');
+        const applyFiltersBtn = document.getElementById('applyFilters');
+        const tableContainer = document.getElementById('tableContainer');
+        const tableHeader = document.getElementById('tableHeader');
+        const tableBody = document.getElementById('tableBody');
+        const exportSection = document.getElementById('exportSection');
+        const exportBtn = document.getElementById('exportBtn');
+        
+        // Event Listeners
+        fileInput.addEventListener('change', handleFileUpload);
+        resetFiltersBtn.addEventListener('click', resetFilters);
+        applyFiltersBtn.addEventListener('click', applyFilters);
+        exportBtn.addEventListener('click', exportFilteredData);
+        
+        // Função para processar o upload do arquivo
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            
+            if (!file) {
+                return;
+            }
+            
+            // Verificar se é um arquivo Excel
+            if (!file.name.match(/\.(xlsx|xls)$/)) {
+                showStatus('Por favor, selecione um arquivo Excel válido (.xlsx ou .xls)', 'error');
+                return;
+            }
+            
+            fileInfo.textContent = `Arquivo selecionado: ${file.name}`;
+            
+            const reader = new FileReader();
+            
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    
+                    // Obter a primeira planilha
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    
+                    // Converter para JSON
+                    const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+                    
+                    if (jsonData.length === 0) {
+                        showStatus('A planilha está vazia', 'error');
+                        return;
+                    }
+                    
+                    // Processar dados
+                    processExcelData(jsonData);
+                    showStatus('Planilha carregada com sucesso!', 'success');
+                    
+                } catch (error) {
+                    console.error('Erro ao processar arquivo:', error);
+                    showStatus('Erro ao processar o arquivo. Verifique se é um arquivo Excel válido.', 'error');
+                }
+            };
+            
+            reader.onerror = function() {
+                showStatus('Erro ao ler o arquivo', 'error');
+            };
+            
+            reader.readAsArrayBuffer(file);
+        }
+        
+        // Função para processar dados do Excel
+        function processExcelData(data) {
+            // A primeira linha deve conter os cabeçalhos
+            columns = data[0];
+            
+            // Identificar colunas numéricas
+            identifyNumericColumns(data);
+            
+            // Identificar separações
+            identifySections(data);
+            
+            // Converter linhas de dados em objetos
+            excelData = [];
+            for (let i = 1; i < data.length; i++) {
+                const row = data[i];
+                const rowObj = {};
+                
+                for (let j = 0; j < columns.length; j++) {
+                    rowObj[columns[j]] = row[j] !== undefined ? row[j] : '';
+                }
+                
+                // Adicionar informações de seção
+                rowObj._section = findSectionForRow(rowObj);
+                
+                excelData.push(rowObj);
+            }
+            
+            filteredData = [...excelData];
+            
+            // Gerar botões de seção
+            generateSectionButtons();
+            
+            // Gerar filtros
+            generateFilters();
+            
+            // Exibir tabela
+            renderTable();
+            
+            // Mostrar seções
+            sectionsPanel.style.display = 'block';
+            filtersSection.style.display = 'block';
+            tableContainer.style.display = 'block';
+            exportSection.style.display = 'block';
+        }
+        
+        // Função para identificar separações na planilha
+        function identifySections(data) {
+            sections = [];
+            
+            // Estratégia 1: Procurar por linhas que possam ser cabeçalhos de seção
+            // (linhas com poucas colunas preenchidas ou com padrões específicos)
+            for (let i = 1; i < data.length; i++) {
+                const row = data[i];
+                
+                // Verificar se a linha tem características de cabeçalho de seção
+                if (isPotentialSectionHeader(row, data[0])) {
+                    const sectionName = extractSectionName(row);
+                    if (sectionName) {
+                        sections.push({
+                            name: sectionName,
+                            startRow: i,
+                            // A próxima seção começará na linha seguinte à atual
+                            endRow: findNextSectionStart(data, i) - 1
+                        });
+                    }
+                }
+            }
+            
+            // Estratégia 2: Procurar por valores repetidos em uma coluna específica
+            // que podem indicar agrupamentos
+            identifySectionsByGrouping(data);
+            
+            console.log('Seções identificadas:', sections);
+        }
+        
+        // Função para verificar se uma linha pode ser um cabeçalho de seção
+        function isPotentialSectionHeader(row, headers) {
+            // Contar células não vazias
+            const nonEmptyCells = row.filter(cell => 
+                cell !== undefined && cell !== null && cell !== '').length;
+            
+            // Se há poucas células preenchidas, pode ser um cabeçalho
+            if (nonEmptyCells <= 2) {
+                // Verificar se contém palavras comuns em cabeçalhos
+                const rowText = row.join(' ').toLowerCase();
+                const sectionKeywords = [
+                    'seção', 'secao', 'grupo', 'categoria', 'tipo', 
+                    'classificação', 'divisão', 'área', 'setor', 'departamento'
+                ];
+                
+                return sectionKeywords.some(keyword => rowText.includes(keyword));
+            }
+            
+            return false;
+        }
+        
+        // Função para extrair o nome da seção de uma linha
+        function extractSectionName(row) {
+            // Encontrar a primeira célula não vazia com conteúdo significativo
+            for (let i = 0; i < row.length; i++) {
+                const cell = row[i];
+                if (cell && cell.toString().trim() !== '') {
+                    // Remover caracteres especiais e normalizar
+                    return cell.toString().trim()
+                        .replace(/[^a-zA-Z0-9À-ÿ\s]/g, '')
+                        .replace(/\s+/g, ' ')
+                        .trim();
+                }
+            }
+            return null;
+        }
+        
+        // Função para encontrar o início da próxima seção
+        function findNextSectionStart(data, currentRow) {
+            for (let i = currentRow + 1; i < data.length; i++) {
+                if (isPotentialSectionHeader(data[i], data[0])) {
+                    return i;
+                }
+            }
+            return data.length; // Última linha + 1
+        }
+        
+        // Função para identificar seções por agrupamento de valores
+        function identifySectionsByGrouping(data) {
+            // Verificar cada coluna para padrões de agrupamento
+            for (let colIndex = 0; colIndex < columns.length; colIndex++) {
+                let currentGroup = null;
+                let groupStart = 1; // Começar após o cabeçalho
+                
+                for (let rowIndex = 1; rowIndex < data.length; rowIndex++) {
+                    const cellValue = data[rowIndex][colIndex];
+                    
+                    // Se encontramos um valor diferente do anterior, pode ser uma nova seção
+                    if (cellValue !== currentGroup && cellValue !== undefined && cellValue !== '') {
+                        // Se já tínhamos um grupo, registrar a seção anterior
+                        if (currentGroup !== null && (rowIndex - groupStart) > 1) {
+                            sections.push({
+                                name: currentGroup,
+                                startRow: groupStart,
+                                endRow: rowIndex - 1,
+                                column: columns[colIndex]
+                            });
+                        }
+                        
+                        currentGroup = cellValue;
+                        groupStart = rowIndex;
+                    }
+                }
+                
+                // Registrar o último grupo
+                if (currentGroup !== null && (data.length - groupStart) > 1) {
+                    sections.push({
+                        name: currentGroup,
+                        startRow: groupStart,
+                        endRow: data.length - 1,
+                        column: columns[colIndex]
+                    });
+                }
+            }
+        }
+        
+        // Função para encontrar a seção de uma linha
+        function findSectionForRow(rowObj) {
+            for (const section of sections) {
+                // Verificar se a linha está dentro do intervalo da seção
+                const rowIndex = excelData.findIndex(row => 
+                    JSON.stringify(row) === JSON.stringify(rowObj));
+                
+                if (rowIndex >= section.startRow && rowIndex <= section.endRow) {
+                    return section.name;
+                }
+                
+                // Verificar por agrupamento por valor de coluna
+                if (section.column && rowObj[section.column] === section.name) {
+                    return section.name;
+                }
+            }
+            
+            return 'Geral'; // Seção padrão para linhas não classificadas
+        }
+        
+        // Função para gerar botões de seção
+        function generateSectionButtons() {
+            sectionsList.innerHTML = '';
+            
+            // Adicionar botão para "Todos"
+            const allButton = document.createElement('button');
+            allButton.className = 'section-btn active';
+            allButton.textContent = 'Todos';
+            allButton.addEventListener('click', () => {
+                // Remover classe active de todos os botões
+                document.querySelectorAll('.section-btn').forEach(btn => {
+                    btn.classList.remove('active');
+                });
+                // Adicionar classe active ao botão clicado
+                allButton.classList.add('active');
+                
+                currentSection = null;
+                applyFilters();
+            });
+            sectionsList.appendChild(allButton);
+            
+            // Adicionar botões para cada seção
+            sections.forEach(section => {
+                const sectionButton = document.createElement('button');
+                sectionButton.className = 'section-btn';
+                sectionButton.textContent = section.name;
+                sectionButton.addEventListener('click', () => {
+                    // Remover classe active de todos os botões
+                    document.querySelectorAll('.section-btn').forEach(btn => {
+                        btn.classList.remove('active');
+                    });
+                    // Adicionar classe active ao botão clicado
+                    sectionButton.classList.add('active');
+                    
+                    currentSection = section.name;
+                    applyFilters();
+                });
+                sectionsList.appendChild(sectionButton);
+            });
+        }
+        
+        // Função para identificar colunas numéricas
+        function identifyNumericColumns(data) {
+            numericColumns = [];
+            
+            // Verificar cada coluna
+            for (let colIndex = 0; colIndex < columns.length; colIndex++) {
+                let isNumeric = true;
+                let hasNumericValue = false;
+                
+                // Verificar as primeiras 10 linhas (ou menos se houver menos dados)
+                const sampleSize = Math.min(10, data.length - 1);
+                
+                for (let rowIndex = 1; rowIndex <= sampleSize; rowIndex++) {
+                    const value = data[rowIndex][colIndex];
+                    
+                    // Se a célula não está vazia
+                    if (value !== undefined && value !== null && value !== '') {
+                        // Tentar converter para número
+                        const numValue = parseFloat(value);
+                        
+                        // Se não for um número válido, provavelmente não é uma coluna numérica
+                        if (isNaN(numValue)) {
+                            isNumeric = false;
+                            break;
+                        } else {
+                            hasNumericValue = true;
+                        }
+                    }
+                }
+                
+                // Se encontramos valores numéricos e não encontramos valores não numéricos
+                if (isNumeric && hasNumericValue) {
+                    numericColumns.push(columns[colIndex]);
+                }
+            }
+            
+            console.log('Colunas numéricas identificadas:', numericColumns);
+        }
+        
+        // Função para gerar filtros dinamicamente
+        function generateFilters() {
+            filterRow.innerHTML = '';
+            
+            // Adicionar filtro de seção
+            const sectionFilterGroup = document.createElement('div');
+            sectionFilterGroup.className = 'filter-group';
+            
+            const sectionLabel = document.createElement('label');
+            sectionLabel.textContent = 'Seção';
+            sectionLabel.setAttribute('for', 'filter-section');
+            
+            const sectionSelect = document.createElement('select');
+            sectionSelect.id = 'filter-section';
+            sectionSelect.dataset.column = '_section';
+            
+            // Adicionar opção vazia
+            const emptyOption = document.createElement('option');
+            emptyOption.value = '';
+            emptyOption.textContent = 'Todas';
+            sectionSelect.appendChild(emptyOption);
+            
+            // Adicionar opções para cada seção
+            const uniqueSections = [...new Set(excelData.map(row => row._section))].filter(value => value !== '');
+            
+            uniqueSections.forEach(value => {
+                const option = document.createElement('option');
+                option.value = value;
+                option.textContent = value;
+                sectionSelect.appendChild(option);
+            });
+            
+            sectionFilterGroup.appendChild(sectionLabel);
+            sectionFilterGroup.appendChild(sectionSelect);
+            filterRow.appendChild(sectionFilterGroup);
+            
+            // Adicionar filtros para outras colunas
+            columns.forEach(column => {
+                const filterGroup = document.createElement('div');
+                filterGroup.className = 'filter-group';
+                
+                const label = document.createElement('label');
+                label.textContent = column;
+                label.setAttribute('for', `filter-${column}`);
+                
+                const select = document.createElement('select');
+                select.id = `filter-${column}`;
+                select.dataset.column = column;
+                
+                // Adicionar opção vazia
+                const emptyOption = document.createElement('option');
+                emptyOption.value = '';
+                emptyOption.textContent = 'Todos';
+                select.appendChild(emptyOption);
+                
+                // Obter valores únicos para a coluna
+                const uniqueValues = [...new Set(excelData.map(row => row[column]))].filter(value => value !== '');
+                
+                // Adicionar opções
+                uniqueValues.forEach(value => {
+                    const option = document.createElement('option');
+                    option.value = value;
+                    option.textContent = value;
+                    select.appendChild(option);
+                });
+                
+                filterGroup.appendChild(label);
+                filterGroup.appendChild(select);
+                filterRow.appendChild(filterGroup);
+            });
+        }
+        
+        // Função para aplicar filtros
+        function applyFilters() {
+            filteredData = [...excelData];
+            
+            // Aplicar filtro de seção se selecionado
+            if (currentSection) {
+                filteredData = filteredData.filter(row => row._section === currentSection);
+            } else {
+                // Aplicar filtro de seção do dropdown se não houver seção ativa
+                const sectionFilter = document.getElementById('filter-section');
+                const sectionFilterValue = sectionFilter.value;
+                
+                if (sectionFilterValue) {
+                    filteredData = filteredData.filter(row => row._section === sectionFilterValue);
+                }
+            }
+            
+            // Aplicar outros filtros
+            columns.forEach(column => {
+                const filterElement = document.getElementById(`filter-${column}`);
+                const filterValue = filterElement.value;
+                
+                if (filterValue) {
+                    filteredData = filteredData.filter(row => {
+                        const cellValue = String(row[column]).toLowerCase();
+                        return cellValue.includes(filterValue.toLowerCase());
+                    });
+                }
+            });
+            
+            // Renderizar tabela com dados filtrados
+            renderTable();
+            
+            showStatus(`Filtros aplicados. ${filteredData.length} de ${excelData.length} registros exibidos.`, 'success');
+        }
+        
+        // Função para resetar filtros
+        function resetFilters() {
+            columns.forEach(column => {
+                const filterElement = document.getElementById(`filter-${column}`);
+                filterElement.value = '';
+            });
+            
+            // Resetar filtro de seção
+            const sectionFilter = document.getElementById('filter-section');
+            sectionFilter.value = '';
+            
+            // Resetar seção ativa
+            currentSection = null;
+            
+            // Ativar botão "Todos"
+            document.querySelectorAll('.section-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            document.querySelectorAll('.section-btn')[0].classList.add('active');
+            
+            filteredData = [...excelData];
+            renderTable();
+            
+            showStatus('Filtros resetados', 'success');
+        }
+        
+        // Função para renderizar a tabela
+        function renderTable() {
+            // Limpar tabela
+            tableHeader.innerHTML = '';
+            tableBody.innerHTML = '';
+            
+            // Adicionar cabeçalhos
+            const headerRow = document.createElement('tr');
+            columns.forEach(column => {
+                const th = document.createElement('th');
+                th.textContent = column;
+                headerRow.appendChild(th);
+            });
+            // Adicionar coluna de seção
+            const sectionTh = document.createElement('th');
+            sectionTh.textContent = 'Seção';
+            headerRow.appendChild(sectionTh);
+            tableHeader.appendChild(headerRow);
+            
+            // Adicionar dados
+            if (filteredData.length === 0) {
+                const noDataRow = document.createElement('tr');
+                const noDataCell = document.createElement('td');
+                noDataCell.colSpan = columns.length + 1;
+                noDataCell.className = 'no-data';
+                noDataCell.textContent = 'Nenhum dado encontrado com os filtros aplicados';
+                noDataRow.appendChild(noDataCell);
+                tableBody.appendChild(noDataRow);
+            } else {
+                let currentDisplaySection = null;
+                
+                filteredData.forEach(row => {
+                    // Adicionar cabeçalho de seção se mudou de seção
+                    if (row._section !== currentDisplaySection) {
+                        currentDisplaySection = row._section;
+                        
+                        const sectionHeaderRow = document.createElement('tr');
+                        sectionHeaderRow.className = 'section-header';
+                        const sectionHeaderCell = document.createElement('td');
+                        sectionHeaderCell.colSpan = columns.length + 1;
+                        sectionHeaderCell.textContent = `SEÇÃO: ${currentDisplaySection}`;
+                        sectionHeaderRow.appendChild(sectionHeaderCell);
+                        tableBody.appendChild(sectionHeaderRow);
+                    }
+                    
+                    const tableRow = document.createElement('tr');
+                    
+                    columns.forEach(column => {
+                        const td = document.createElement('td');
+                        td.textContent = row[column] !== undefined ? row[column] : '';
+                        tableRow.appendChild(td);
+                    });
+                    
+                    // Adicionar célula de seção
+                    const sectionTd = document.createElement('td');
+                    sectionTd.textContent = row._section;
+                    tableRow.appendChild(sectionTd);
+                    
+                    tableBody.appendChild(tableRow);
+                });
+                
+                // Adicionar linha de totais se houver colunas numéricas
+                if (numericColumns.length > 0) {
+                    addTotalsRow();
+                }
+            }
+        }
+        
+        // Função para adicionar linha de totais na tabela
+        function addTotalsRow() {
+            const totalsRow = document.createElement('tr');
+            totalsRow.className = 'totals-row';
+            
+            // Calcular totais para cada coluna numérica
+            const totals = {};
+            numericColumns.forEach(column => {
+                totals[column] = 0;
+                
+                filteredData.forEach(row => {
+                    const value = parseFloat(row[column]);
+                    if (!isNaN(value)) {
+                        totals[column] += value;
+                    }
+                });
+            });
+            
+            // Criar células da linha de totais
+            columns.forEach(column => {
+                const td = document.createElement('td');
+                
+                if (numericColumns.includes(column)) {
+                    // Formatar número com 2 casas decimais
+                    td.textContent = totals[column].toFixed(2);
+                } else if (column === columns[0]) {
+                    td.textContent = 'TOTAL';
+                } else {
+                    td.textContent = '';
+                }
+                
+                totalsRow.appendChild(td);
+            });
+            
+            // Célula vazia para a coluna de seção
+            const emptyTd = document.createElement('td');
+            emptyTd.textContent = '';
+            totalsRow.appendChild(emptyTd);
+            
+            tableBody.appendChild(totalsRow);
+        }
+        
+        // Função para exportar dados filtrados
+        function exportFilteredData() {
+            if (filteredData.length === 0) {
+                showStatus('Não há dados para exportar', 'error');
+                return;
+            }
+            
+            try {
+                // Criar uma cópia dos dados filtrados para adicionar a linha de totais
+                const exportData = [...filteredData];
+                
+                // Adicionar linha de totais se houver colunas numéricas
+                if (numericColumns.length > 0) {
+                    const totalsRow = {};
+                    
+                    // Calcular totais para cada coluna numérica
+                    numericColumns.forEach(column => {
+                        let total = 0;
+                        
+                        filteredData.forEach(row => {
+                            const value = parseFloat(row[column]);
+                            if (!isNaN(value)) {
+                                total += value;
+                            }
+                        });
+                        
+                        totalsRow[column] = total;
+                    });
+                    
+                    // Adicionar texto "TOTAL" na primeira coluna
+                    totalsRow[columns[0]] = 'TOTAL';
+                    
+                    exportData.push(totalsRow);
+                }
+                
+                // Criar uma nova planilha
+                const ws = XLSX.utils.json_to_sheet(exportData);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, "Dados Filtrados");
+                
+                // Gerar arquivo e fazer download
+                XLSX.writeFile(wb, "dados_filtrados.xlsx");
+                
+                showStatus('Dados exportados com sucesso com totais calculados!', 'success');
+            } catch (error) {
+                console.error('Erro ao exportar dados:', error);
+                showStatus('Erro ao exportar dados', 'error');
+            }
+        }
+        
+        // Função para mostrar mensagens de status
+        function showStatus(message, type) {
+            statusMessage.textContent = message;
+            statusMessage.className = `status ${type}`;
+            statusMessage.style.display = 'block';
+            
+            // Ocultar mensagem após 5 segundos
+            setTimeout(() => {
+                statusMessage.style.display = 'none';
+            }, 5000);
+        }
+    </script>
+</body>
+</html>
+}
         
         .totals-row td {
             border-top: 2px solid #3498db;
