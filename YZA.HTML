@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Filtro de Planilhas Excel - Com Identificação de Separações</title>
+    <title>Filtro de Planilhas Excel - Com Identificação de Quias</title>
     <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
     <style>
         * {
@@ -83,7 +83,7 @@
             color: #7f8c8d;
         }
         
-        .sections-panel {
+        .quias-panel {
             background: #f8f9fa;
             border-radius: 8px;
             padding: 20px;
@@ -91,14 +91,14 @@
             display: none;
         }
         
-        .sections-list {
+        .quias-list {
             display: flex;
             flex-wrap: wrap;
             gap: 10px;
             margin-top: 15px;
         }
         
-        .section-btn {
+        .quia-btn {
             background: #e9ecef;
             border: 1px solid #dee2e6;
             border-radius: 5px;
@@ -107,11 +107,11 @@
             transition: all 0.3s;
         }
         
-        .section-btn:hover {
+        .quia-btn:hover {
             background: #dee2e6;
         }
         
-        .section-btn.active {
+        .quia-btn.active {
             background: #3498db;
             color: white;
             border-color: #2980b9;
@@ -258,9 +258,14 @@
             border-top: 2px solid #3498db;
         }
         
-        .section-header {
+        .quia-header {
             background-color: #e8f4fc !important;
             font-weight: bold;
+            font-size: 1.1em;
+        }
+        
+        .quia-row {
+            background-color: #f0f8ff !important;
         }
         
         @media (max-width: 768px) {
@@ -272,7 +277,7 @@
                 min-width: 100%;
             }
             
-            .sections-list {
+            .quias-list {
                 flex-direction: column;
             }
         }
@@ -280,7 +285,7 @@
 </head>
 <body>
     <div class="container">
-        <h1>Filtro de Planilhas Excel - Com Identificação de Separações</h1>
+        <h1>Filtro de Planilhas Excel - Com Identificação de Quias</h1>
         
         <div class="upload-section">
             <h3>Faça upload da sua planilha Excel</h3>
@@ -292,11 +297,11 @@
         
         <div class="status" id="statusMessage"></div>
         
-        <div class="sections-panel" id="sectionsPanel">
-            <h3>Separações Identificadas</h3>
-            <p>Clique em uma separação para filtrar os dados:</p>
-            <div class="sections-list" id="sectionsList">
-                <!-- Botões de separação serão gerados dinamicamente aqui -->
+        <div class="quias-panel" id="quiasPanel">
+            <h3>Quias Identificadas</h3>
+            <p>Clique em uma quia para filtrar os dados:</p>
+            <div class="quias-list" id="quiasList">
+                <!-- Botões de quia serão gerados dinamicamente aqui -->
             </div>
         </div>
         
@@ -333,15 +338,15 @@
         let filteredData = [];
         let columns = [];
         let numericColumns = [];
-        let sections = [];
-        let currentSection = null;
+        let quias = [];
+        let currentQuia = null;
         
         // Elementos DOM
         const fileInput = document.getElementById('fileInput');
         const fileInfo = document.getElementById('fileInfo');
         const statusMessage = document.getElementById('statusMessage');
-        const sectionsPanel = document.getElementById('sectionsPanel');
-        const sectionsList = document.getElementById('sectionsList');
+        const quiasPanel = document.getElementById('quiasPanel');
+        const quiasList = document.getElementById('quiasList');
         const filtersSection = document.getElementById('filtersSection');
         const filterRow = document.getElementById('filterRow');
         const resetFiltersBtn = document.getElementById('resetFilters');
@@ -418,8 +423,8 @@
             // Identificar colunas numéricas
             identifyNumericColumns(data);
             
-            // Identificar separações
-            identifySections(data);
+            // Identificar quias
+            identifyQuias(data);
             
             // Converter linhas de dados em objetos
             excelData = [];
@@ -431,16 +436,16 @@
                     rowObj[columns[j]] = row[j] !== undefined ? row[j] : '';
                 }
                 
-                // Adicionar informações de seção
-                rowObj._section = findSectionForRow(rowObj, i);
+                // Adicionar informações de quia
+                rowObj._quia = findQuiaForRow(rowObj, i);
                 
                 excelData.push(rowObj);
             }
             
             filteredData = [...excelData];
             
-            // Gerar botões de seção
-            generateSectionButtons();
+            // Gerar botões de quia
+            generateQuiaButtons();
             
             // Gerar filtros
             generateFilters();
@@ -449,107 +454,220 @@
             renderTable();
             
             // Mostrar seções
-            sectionsPanel.style.display = 'block';
+            quiasPanel.style.display = 'block';
             filtersSection.style.display = 'block';
             tableContainer.style.display = 'block';
             exportSection.style.display = 'block';
         }
         
-        // Função para identificar separações na planilha - CORRIGIDA
-        function identifySections(data) {
-            sections = [];
+        // Função para identificar quias na planilha
+        function identifyQuias(data) {
+            quias = [];
             
-            // Estratégia simplificada: procurar por valores únicos em cada coluna
-            // que podem representar categorias ou grupos
-            for (let colIndex = 0; colIndex < columns.length; colIndex++) {
-                const columnName = columns[colIndex];
-                const values = [];
+            // Estratégia 1: Procurar por linhas que são quias (cabeçalhos de seção)
+            for (let i = 1; i < data.length; i++) {
+                const row = data[i];
                 
-                // Coletar valores únicos não vazios
-                for (let rowIndex = 1; rowIndex < data.length; rowIndex++) {
-                    const value = data[rowIndex][colIndex];
-                    if (value && value !== '' && !values.includes(value)) {
-                        values.push(value);
-                    }
-                }
-                
-                // Se temos poucos valores únicos, pode ser uma coluna de categorização
-                if (values.length > 1 && values.length <= 10) {
-                    console.log(`Coluna "${columnName}" tem ${values.length} valores únicos:`, values);
-                    
-                    // Para cada valor único, criar uma seção
-                    values.forEach(value => {
-                        sections.push({
-                            name: `${columnName}: ${value}`,
-                            column: columnName,
-                            value: value
+                // Verificar se esta linha é uma quia
+                if (isQuiaRow(row, data[0])) {
+                    const quiaName = extractQuiaName(row);
+                    if (quiaName) {
+                        quias.push({
+                            name: quiaName,
+                            rowIndex: i,
+                            type: 'header'
                         });
-                    });
+                    }
                 }
             }
             
-            // Se não encontramos seções, criar uma seção padrão
-            if (sections.length === 0) {
-                sections.push({
+            // Estratégia 2: Procurar por valores únicos que funcionam como categorias
+            identifyQuiasByCategories(data);
+            
+            // Se não encontramos quias, criar uma padrão
+            if (quias.length === 0) {
+                quias.push({
                     name: 'Todos os Dados',
-                    column: null,
-                    value: null
+                    rowIndex: 1,
+                    type: 'default'
                 });
             }
             
-            console.log('Seções identificadas:', sections);
+            console.log('Quias identificadas:', quias);
         }
         
-        // Função para encontrar a seção de uma linha - CORRIGIDA
-        function findSectionForRow(rowObj, rowIndex) {
-            for (const section of sections) {
-                if (section.column && section.value === rowObj[section.column]) {
-                    return section.name;
+        // Função para verificar se uma linha é uma quia
+        function isQuiaRow(row, headers) {
+            // Contar células não vazias
+            const nonEmptyCells = row.filter(cell => 
+                cell !== undefined && cell !== null && cell !== '').length;
+            
+            // Se há poucas células preenchidas (1-3), pode ser uma quia
+            if (nonEmptyCells >= 1 && nonEmptyCells <= 3) {
+                // Verificar se contém palavras características de quias
+                const rowText = row.join(' ').toLowerCase();
+                const quiaIndicators = [
+                    // Padrões comuns em quias
+                    'total', 'subtotal', 'resumo', 'sumário',
+                    'categoria', 'grupo', 'seção', 'divisão',
+                    'relatório', 'análise', 'dados', 'informações',
+                    // Meses
+                    'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
+                    'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro',
+                    // Trimestres
+                    '1º trimestre', '2º trimestre', '3º trimestre', '4º trimestre',
+                    'primeiro trimestre', 'segundo trimestre', 'terceiro trimestre', 'quarto trimestre',
+                    // Anos
+                    '2020', '2021', '2022', '2023', '2024', '2025'
+                ];
+                
+                return quiaIndicators.some(indicator => rowText.includes(indicator));
+            }
+            
+            // Verificar se é uma linha com formatação diferente (muitas células mescladas ou vazias)
+            const emptyCells = row.filter(cell => 
+                cell === undefined || cell === null || cell === '').length;
+            
+            if (emptyCells >= headers.length - 2) {
+                return true; // Linha com poucos dados - provavelmente quia
+            }
+            
+            return false;
+        }
+        
+        // Função para extrair o nome da quia
+        function extractQuiaName(row) {
+            // Encontrar a primeira célula não vazia com conteúdo significativo
+            for (let i = 0; i < row.length; i++) {
+                const cell = row[i];
+                if (cell && cell.toString().trim() !== '') {
+                    return cell.toString().trim();
+                }
+            }
+            return null;
+        }
+        
+        // Função para identificar quias por categorias em colunas
+        function identifyQuiasByCategories(data) {
+            // Procurar por colunas que têm valores que funcionam como categorias/quias
+            for (let colIndex = 0; colIndex < columns.length; colIndex++) {
+                const columnName = columns[colIndex];
+                const uniqueValues = new Set();
+                
+                // Coletar valores únicos
+                for (let rowIndex = 1; rowIndex < data.length; rowIndex++) {
+                    const value = data[rowIndex][colIndex];
+                    if (value && value !== '') {
+                        uniqueValues.add(value);
+                    }
+                }
+                
+                // Se temos valores únicos que podem ser quias
+                if (uniqueValues.size > 1 && uniqueValues.size <= 15) {
+                    uniqueValues.forEach(value => {
+                        // Verificar se o valor parece ser uma quia
+                        if (isQuiaValue(value)) {
+                            quias.push({
+                                name: `${value}`,
+                                column: columnName,
+                                value: value,
+                                type: 'category'
+                            });
+                        }
+                    });
+                }
+            }
+        }
+        
+        // Função para verificar se um valor parece ser uma quia
+        function isQuiaValue(value) {
+            if (!value || typeof value !== 'string') return false;
+            
+            const strValue = value.toString().toLowerCase();
+            const quiaPatterns = [
+                // Padrões de quias
+                /^total/i, /^subtotal/i, /^resumo/i, /^sumário/i,
+                /^categoria/i, /^grupo/i, /^seção/i, /^divisão/i,
+                /^relatório/i, /^análise/i,
+                // Meses
+                /janeiro|fevereiro|março|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro/i,
+                // Trimestres
+                /\dº trimestre|primeiro trimestre|segundo trimestre|terceiro trimestre|quarto trimestre/i,
+                // Anos
+                /^20\d{2}$/
+            ];
+            
+            return quiaPatterns.some(pattern => pattern.test(strValue));
+        }
+        
+        // Função para encontrar a quia de uma linha
+        function findQuiaForRow(rowObj, rowIndex) {
+            // Primeiro, verificar se esta linha é uma quia
+            for (const quia of quias) {
+                if (quia.rowIndex === rowIndex) {
+                    return quia.name;
                 }
             }
             
-            // Se não encontrou seção específica, usar a primeira disponível
-            return sections.length > 0 ? sections[0].name : 'Geral';
+            // Depois, verificar por categorias
+            for (const quia of quias) {
+                if (quia.column && rowObj[quia.column] === quia.value) {
+                    return quia.name;
+                }
+            }
+            
+            // Se não encontrou quia específica, encontrar a quia mais próxima acima
+            let closestQuia = 'Geral';
+            let closestDistance = Infinity;
+            
+            for (const quia of quias) {
+                if (quia.rowIndex < rowIndex && (rowIndex - quia.rowIndex) < closestDistance) {
+                    closestDistance = rowIndex - quia.rowIndex;
+                    closestQuia = quia.name;
+                }
+            }
+            
+            return closestQuia;
         }
         
-        // Função para gerar botões de seção
-        function generateSectionButtons() {
-            sectionsList.innerHTML = '';
+        // Função para gerar botões de quia
+        function generateQuiaButtons() {
+            quiasList.innerHTML = '';
             
             // Adicionar botão para "Todos"
             const allButton = document.createElement('button');
-            allButton.className = 'section-btn active';
+            allButton.className = 'quia-btn active';
             allButton.textContent = 'Todos';
             allButton.addEventListener('click', () => {
                 // Remover classe active de todos os botões
-                document.querySelectorAll('.section-btn').forEach(btn => {
+                document.querySelectorAll('.quia-btn').forEach(btn => {
                     btn.classList.remove('active');
                 });
                 // Adicionar classe active ao botão clicado
                 allButton.classList.add('active');
                 
-                currentSection = null;
+                currentQuia = null;
                 applyFilters();
             });
-            sectionsList.appendChild(allButton);
+            quiasList.appendChild(allButton);
             
-            // Adicionar botões para cada seção
-            sections.forEach(section => {
-                const sectionButton = document.createElement('button');
-                sectionButton.className = 'section-btn';
-                sectionButton.textContent = section.name;
-                sectionButton.addEventListener('click', () => {
+            // Adicionar botões para cada quia
+            quias.forEach(quia => {
+                const quiaButton = document.createElement('button');
+                quiaButton.className = 'quia-btn';
+                quiaButton.textContent = quia.name;
+                quiaButton.addEventListener('click', () => {
                     // Remover classe active de todos os botões
-                    document.querySelectorAll('.section-btn').forEach(btn => {
+                    document.querySelectorAll('.quia-btn').forEach(btn => {
                         btn.classList.remove('active');
                     });
                     // Adicionar classe active ao botão clicado
-                    sectionButton.classList.add('active');
+                    quiaButton.classList.add('active');
                     
-                    currentSection = section.name;
+                    currentQuia = quia.name;
                     applyFilters();
                 });
-                sectionsList.appendChild(sectionButton);
+                quiasList.appendChild(quiaButton);
             });
         }
         
@@ -596,37 +714,37 @@
         function generateFilters() {
             filterRow.innerHTML = '';
             
-            // Adicionar filtro de seção
-            const sectionFilterGroup = document.createElement('div');
-            sectionFilterGroup.className = 'filter-group';
+            // Adicionar filtro de quia
+            const quiaFilterGroup = document.createElement('div');
+            quiaFilterGroup.className = 'filter-group';
             
-            const sectionLabel = document.createElement('label');
-            sectionLabel.textContent = 'Seção';
-            sectionLabel.setAttribute('for', 'filter-section');
+            const quiaLabel = document.createElement('label');
+            quiaLabel.textContent = 'Quia';
+            quiaLabel.setAttribute('for', 'filter-quia');
             
-            const sectionSelect = document.createElement('select');
-            sectionSelect.id = 'filter-section';
-            sectionSelect.dataset.column = '_section';
+            const quiaSelect = document.createElement('select');
+            quiaSelect.id = 'filter-quia';
+            quiaSelect.dataset.column = '_quia';
             
             // Adicionar opção vazia
             const emptyOption = document.createElement('option');
             emptyOption.value = '';
             emptyOption.textContent = 'Todas';
-            sectionSelect.appendChild(emptyOption);
+            quiaSelect.appendChild(emptyOption);
             
-            // Adicionar opções para cada seção
-            const uniqueSections = [...new Set(excelData.map(row => row._section))].filter(value => value !== '');
+            // Adicionar opções para cada quia
+            const uniqueQuias = [...new Set(excelData.map(row => row._quia))].filter(value => value !== '');
             
-            uniqueSections.forEach(value => {
+            uniqueQuias.forEach(value => {
                 const option = document.createElement('option');
                 option.value = value;
                 option.textContent = value;
-                sectionSelect.appendChild(option);
+                quiaSelect.appendChild(option);
             });
             
-            sectionFilterGroup.appendChild(sectionLabel);
-            sectionFilterGroup.appendChild(sectionSelect);
-            filterRow.appendChild(sectionFilterGroup);
+            quiaFilterGroup.appendChild(quiaLabel);
+            quiaFilterGroup.appendChild(quiaSelect);
+            filterRow.appendChild(quiaFilterGroup);
             
             // Adicionar filtros para outras colunas
             columns.forEach(column => {
@@ -668,16 +786,16 @@
         function applyFilters() {
             filteredData = [...excelData];
             
-            // Aplicar filtro de seção se selecionado
-            if (currentSection) {
-                filteredData = filteredData.filter(row => row._section === currentSection);
+            // Aplicar filtro de quia se selecionado
+            if (currentQuia) {
+                filteredData = filteredData.filter(row => row._quia === currentQuia);
             } else {
-                // Aplicar filtro de seção do dropdown se não houver seção ativa
-                const sectionFilter = document.getElementById('filter-section');
-                const sectionFilterValue = sectionFilter.value;
+                // Aplicar filtro de quia do dropdown se não houver quia ativa
+                const quiaFilter = document.getElementById('filter-quia');
+                const quiaFilterValue = quiaFilter.value;
                 
-                if (sectionFilterValue) {
-                    filteredData = filteredData.filter(row => row._section === sectionFilterValue);
+                if (quiaFilterValue) {
+                    filteredData = filteredData.filter(row => row._quia === quiaFilterValue);
                 }
             }
             
@@ -707,19 +825,19 @@
                 filterElement.value = '';
             });
             
-            // Resetar filtro de seção
-            const sectionFilter = document.getElementById('filter-section');
-            sectionFilter.value = '';
+            // Resetar filtro de quia
+            const quiaFilter = document.getElementById('filter-quia');
+            quiaFilter.value = '';
             
-            // Resetar seção ativa
-            currentSection = null;
+            // Resetar quia ativa
+            currentQuia = null;
             
             // Ativar botão "Todos"
-            document.querySelectorAll('.section-btn').forEach(btn => {
+            document.querySelectorAll('.quia-btn').forEach(btn => {
                 btn.classList.remove('active');
             });
-            if (document.querySelectorAll('.section-btn')[0]) {
-                document.querySelectorAll('.section-btn')[0].classList.add('active');
+            if (document.querySelectorAll('.quia-btn')[0]) {
+                document.querySelectorAll('.quia-btn')[0].classList.add('active');
             }
             
             filteredData = [...excelData];
@@ -741,10 +859,10 @@
                 th.textContent = column;
                 headerRow.appendChild(th);
             });
-            // Adicionar coluna de seção
-            const sectionTh = document.createElement('th');
-            sectionTh.textContent = 'Seção';
-            headerRow.appendChild(sectionTh);
+            // Adicionar coluna de quia
+            const quiaTh = document.createElement('th');
+            quiaTh.textContent = 'Quia';
+            headerRow.appendChild(quiaTh);
             tableHeader.appendChild(headerRow);
             
             // Adicionar dados
@@ -757,23 +875,31 @@
                 noDataRow.appendChild(noDataCell);
                 tableBody.appendChild(noDataRow);
             } else {
-                let currentDisplaySection = null;
+                let currentDisplayQuia = null;
                 
-                filteredData.forEach(row => {
-                    // Adicionar cabeçalho de seção se mudou de seção
-                    if (row._section !== currentDisplaySection) {
-                        currentDisplaySection = row._section;
+                filteredData.forEach((row, index) => {
+                    // Verificar se esta linha é uma quia
+                    const isQuiaRow = quias.some(quia => 
+                        quia.name === row._quia && quias.find(q => q.name === row._quia)?.rowIndex === excelData.findIndex(r => r === row) + 1
+                    );
+                    
+                    // Adicionar cabeçalho de quia se mudou de quia
+                    if (row._quia !== currentDisplayQuia) {
+                        currentDisplayQuia = row._quia;
                         
-                        const sectionHeaderRow = document.createElement('tr');
-                        sectionHeaderRow.className = 'section-header';
-                        const sectionHeaderCell = document.createElement('td');
-                        sectionHeaderCell.colSpan = columns.length + 1;
-                        sectionHeaderCell.textContent = `SEÇÃO: ${currentDisplaySection}`;
-                        sectionHeaderRow.appendChild(sectionHeaderCell);
-                        tableBody.appendChild(sectionHeaderRow);
+                        const quiaHeaderRow = document.createElement('tr');
+                        quiaHeaderRow.className = 'quia-header';
+                        const quiaHeaderCell = document.createElement('td');
+                        quiaHeaderCell.colSpan = columns.length + 1;
+                        quiaHeaderCell.textContent = `QUIA: ${currentDisplayQuia}`;
+                        quiaHeaderRow.appendChild(quiaHeaderCell);
+                        tableBody.appendChild(quiaHeaderRow);
                     }
                     
                     const tableRow = document.createElement('tr');
+                    if (isQuiaRow) {
+                        tableRow.className = 'quia-row';
+                    }
                     
                     columns.forEach(column => {
                         const td = document.createElement('td');
@@ -781,10 +907,10 @@
                         tableRow.appendChild(td);
                     });
                     
-                    // Adicionar célula de seção
-                    const sectionTd = document.createElement('td');
-                    sectionTd.textContent = row._section;
-                    tableRow.appendChild(sectionTd);
+                    // Adicionar célula de quia
+                    const quiaTd = document.createElement('td');
+                    quiaTd.textContent = row._quia;
+                    tableRow.appendChild(quiaTd);
                     
                     tableBody.appendChild(tableRow);
                 });
@@ -830,7 +956,7 @@
                 totalsRow.appendChild(td);
             });
             
-            // Célula vazia para a coluna de seção
+            // Célula vazia para a coluna de quia
             const emptyTd = document.createElement('td');
             emptyTd.textContent = '';
             totalsRow.appendChild(emptyTd);
