@@ -1,0 +1,223 @@
+```name=package.json
+{
+  "name": "chat-ia-no-db",
+  "version": "1.0.0",
+  "description": "Exemplo de assistente IA integrado sem banco de dados (in-memory session)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "cookie-parser": "^1.4.6",
+    "dotenv": "^16.0.0",
+    "express": "^4.18.2",
+    "node-fetch": "^2.6.7",
+    "uuid": "^9.0.0"
+  }
+}
+```
+
+```name=.env.example
+# Copie para .env e coloque sua chave
+OPENAI_API_KEY=sk-...
+PORT=3000
+
+# Configs opcionais
+MAX_HISTORY_MESSAGES=10
+```
+
+```name=server.js
+// Servidor Express que funciona como proxy para a API do LLM.
+// Mantém histórico apenas em memória (Map) por sessão cookie.
+// Requisitos: colocar OPENAI_API_KEY no .env (ou variáveis de ambiente)
+require('dotenv').config();
+const express = require('express');
+const fetch = require('node-fetch');
+const cookieParser = require('cookie-parser');
+const { v4: uuidv4 } = require('uuid');
+
+const app = express();
+app.use(express.json());
+app.use(cookieParser());
+app.use(express.static('public'));
+
+const OPENAI_KEY = process.env.OPENAI_API_KEY;
+if (!OPENAI_KEY) {
+  console.error('ERRO: defina OPENAI_API_KEY no .env');
+  process.exit(1);
+}
+
+const PORT = process.env.PORT || 3000;
+const MAX_HISTORY = parseInt(process.env.MAX_HISTORY_MESSAGES || '10', 10);
+
+// Estrutura em memória: Map<sessionId, [{role, content}, ...]>
+const sessions = new Map();
+
+// Helper: retorna ou cria sessão
+function getSession(req, res) {
+  let sid = req.cookies && req.cookies.sid;
+  if (!sid || !sessions.has(sid)) {
+    sid = uuidv4();
+    // cookie simples; mesmo domínio (servidor serve frontend), secure=false para localhost
+    res.cookie('sid', sid, { httpOnly: true, sameSite: 'lax' });
+    sessions.set(sid, []);
+  }
+  return { sid, history: sessions.get(sid) };
+}
+
+// Endpoint de chat
+app.post('/api/chat', async (req, res) => {
+  const userMessage = (req.body && req.body.message) ? String(req.body.message).trim() : '';
+  if (!userMessage) return res.status(400).json({ error: 'missing message' });
+
+  const { sid, history } = getSession(req, res);
+
+  // Adiciona a mensagem do usuário ao histórico em memória
+  history.push({ role: 'user', content: userMessage });
+  // Mantém o histórico pequeno
+  if (history.length > MAX_HISTORY * 2) { // cada mensagem tem role; limite de pares
+    history.splice(0, history.length - MAX_HISTORY * 2);
+  }
+
+  // Monta mensagens para o modelo: system + últimos pares
+  const systemMessage = {
+    role: 'system',
+    content: 'Você é um assistente útil que responde em português de forma clara e breve.'
+  };
+  // Converte o history (array de {role, content}) em formato do OpenAI
+  const messagesForModel = [systemMessage, ...history.map(m => ({ role: m.role, content: m.content }))];
+
+  try {
+    const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${OPENAI_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'gpt-3.5-turbo',
+        messages: messagesForModel,
+        max_tokens: 500,
+        temperature: 0.2
+      })
+    });
+
+    if (!resp.ok) {
+      const text = await resp.text();
+      console.error('Provider error:', text);
+      return res.status(500).json({ error: 'provider error', detail: text });
+    }
+
+    const data = await resp.json();
+    const assistantReply = data.choices?.[0]?.message?.content || 'Desculpe, sem resposta.';
+
+    // Salva resposta do assistente no histórico em memória
+    history.push({ role: 'assistant', content: assistantReply });
+
+    res.json({ reply: assistantReply });
+  } catch (err) {
+    console.error('Internal error:', err);
+    res.status(500).json({ error: 'internal error' });
+  }
+});
+
+// Endpoint opcional para limpar histórico da sessão (ex.: botão "nova conversa")
+app.post('/api/clear', (req, res) => {
+  const sid = req.cookies && req.cookies.sid;
+  if (sid && sessions.has(sid)) sessions.delete(sid);
+  res.json({ ok: true });
+});
+
+app.listen(PORT, () => {
+  console.log(`Servidor rodando em http://localhost:${PORT}`);
+});
+```
+
+```name=public/index.html
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <title>Assistente IA (sem DB)</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    #chat { border: 1px solid #ddd; padding: 10px; width: 520px; height: 380px; overflow:auto; background:#fafafa; }
+    .msg { margin: 8px 0; }
+    .user { color:#0b5; }
+    .bot { color:#06f; }
+    #controls { margin-top:10px; }
+    #input { width:400px; padding:6px; }
+    button { padding:6px 10px; }
+    .meta { font-size:12px; color:#666; margin-bottom:8px; }
+  </style>
+</head>
+<body>
+  <h3>Assistente IA (sem banco de dados)</h3>
+  <div class="meta">Histórico mantido apenas em memória no servidor (volátil). Reiniciar servidor limpa tudo.</div>
+  <div id="chat"></div>
+
+  <div id="controls">
+    <input id="input" placeholder="Digite sua pergunta..." />
+    <button id="send">Enviar</button>
+    <button id="newconv">Nova conversa</button>
+  </div>
+
+  <script>
+    const chat = document.getElementById('chat');
+    const input = document.getElementById('input');
+
+    function append(text, cls) {
+      const d = document.createElement('div');
+      d.className = 'msg ' + cls;
+      d.textContent = text;
+      chat.appendChild(d);
+      chat.scrollTop = chat.scrollHeight;
+    }
+
+    async function sendMessage(text) {
+      append('Você: ' + text, 'user');
+      append('Assistente: ...', 'bot'); // marcador temporário
+      try {
+        const r = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: text })
+          // mesmo domínio -> cookies de sessão serão enviados automaticamente
+        });
+        const data = await r.json();
+        // substitui o último bot "..."
+        const bots = chat.querySelectorAll('.msg.bot');
+        if (bots.length > 0) {
+          bots[bots.length - 1].textContent = 'Assistente: ' + (data.reply || 'Sem resposta');
+        }
+      } catch (e) {
+        const bots = chat.querySelectorAll('.msg.bot');
+        if (bots.length > 0) {
+          bots[bots.length - 1].textContent = 'Assistente: Erro de conexão';
+        }
+      }
+    }
+
+    document.getElementById('send').onclick = () => {
+      const t = input.value.trim();
+      if (!t) return;
+      input.value = '';
+      sendMessage(t);
+    };
+
+    document.getElementById('newconv').onclick = async () => {
+      await fetch('/api/clear', { method: 'POST' });
+      chat.innerHTML = '';
+      append('Nova conversa iniciada.', 'meta');
+    };
+
+    // enviar com Enter
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        document.getElementById('send').click();
+      }
+    });
+  </script>
+</body>
+</html>
+
