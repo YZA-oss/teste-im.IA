@@ -196,6 +196,7 @@
             border-radius: 8px;
             box-shadow: 0 0 10px rgba(0, 0, 0, 0.05);
             display: none;
+            margin-bottom: 20px;
         }
         
         table {
@@ -616,41 +617,38 @@
             `;
         }
         
-        // Função para identificar colunas numéricas
+        // Função melhorada para identificar colunas numéricas
         function identifyNumericColumns(data) {
             numericColumns = [];
             
-            if (!data[0]) return;
+            if (!data[0] || data.length < 2) return;
             
-            // Verificar cada coluna
             for (let colIndex = 0; colIndex < data[0].length; colIndex++) {
-                let isNumeric = true;
-                let hasNumericValue = false;
+                let numericCount = 0;
+                let totalCount = 0;
+                const columnName = data[0][colIndex];
                 
-                // Verificar as primeiras 10 linhas (ou menos se houver menos dados)
-                const sampleSize = Math.min(10, data.length - 1);
+                if (!columnName) continue;
+                
+                // Verificar mais linhas para melhor precisão
+                const sampleSize = Math.min(100, data.length - 1);
                 
                 for (let rowIndex = 1; rowIndex <= sampleSize; rowIndex++) {
                     const value = data[rowIndex][colIndex];
                     
-                    // Se a célula não está vazia
                     if (value !== undefined && value !== null && value !== '') {
-                        // Tentar converter para número
+                        totalCount++;
                         const numValue = parseFloat(value);
                         
-                        // Se não for um número válido, provavelmente não é uma coluna numérica
-                        if (isNaN(numValue)) {
-                            isNumeric = false;
-                            break;
-                        } else {
-                            hasNumericValue = true;
+                        if (!isNaN(numValue) && typeof value !== 'boolean') {
+                            numericCount++;
                         }
                     }
                 }
                 
-                // Se encontramos valores numéricos e não encontramos valores não numéricos
-                if (isNumeric && hasNumericValue && data[0][colIndex]) {
-                    numericColumns.push(data[0][colIndex]);
+                // Considerar como numérica se pelo menos 70% dos valores são numéricos
+                if (totalCount > 0 && (numericCount / totalCount) >= 0.7) {
+                    numericColumns.push(columnName);
                 }
             }
             
@@ -828,53 +826,74 @@
             tableBody.appendChild(totalsRow);
         }
         
-        // Função para exportar dados filtrados
+        // Função corrigida para exportar dados filtrados
         function exportFilteredData() {
+            if (!currentSheetName) {
+                showStatus('Nenhuma aba selecionada para exportação', 'error');
+                return;
+            }
+            
             if (filteredData.length === 0) {
                 showStatus('Não há dados para exportar', 'error');
                 return;
             }
-            
+
             try {
-                // Criar uma cópia dos dados filtrados para adicionar a linha de totais
-                const exportData = [...filteredData];
+                // Preparar dados para exportação - remover coluna interna _sheet
+                const exportData = filteredData.map(row => {
+                    const newRow = {...row};
+                    delete newRow._sheet; // Remove a coluna interna
+                    return newRow;
+                });
+
+                // Criar worksheet com os dados
+                const ws = XLSX.utils.json_to_sheet(exportData);
                 
                 // Adicionar linha de totais se houver colunas numéricas
                 if (numericColumns.length > 0) {
-                    const totalsRow = {};
+                    // Calcular a posição da próxima linha
+                    const nextRow = exportData.length + 2; // +2 porque a primeira linha é o cabeçalho
                     
-                    // Calcular totais para cada coluna numérica
-                    numericColumns.forEach(column => {
-                        let total = 0;
-                        
-                        filteredData.forEach(row => {
-                            const value = parseFloat(row[column]);
-                            if (!isNaN(value)) {
-                                total += value;
-                            }
-                        });
-                        
-                        totalsRow[column] = total;
+                    // Adicionar linha em branco antes dos totais
+                    XLSX.utils.sheet_add_aoa(ws, [['']], { origin: `A${nextRow}` });
+                    
+                    // Preparar array para linha de totais
+                    const totalsRow = columns.map(column => {
+                        if (numericColumns.includes(column)) {
+                            let total = 0;
+                            filteredData.forEach(row => {
+                                const value = parseFloat(row[column]);
+                                if (!isNaN(value)) {
+                                    total += value;
+                                }
+                            });
+                            return total.toFixed(2);
+                        } else if (column === columns[0]) {
+                            return 'TOTAL';
+                        } else {
+                            return '';
+                        }
                     });
                     
-                    // Adicionar texto "TOTAL" na primeira coluna
-                    totalsRow[columns[0]] = 'TOTAL';
-                    
-                    exportData.push(totalsRow);
+                    // Adicionar linha de totais
+                    XLSX.utils.sheet_add_aoa(ws, [totalsRow], { origin: `A${nextRow + 1}` });
                 }
-                
-                // Criar uma nova planilha
-                const ws = XLSX.utils.json_to_sheet(exportData);
+
+                // Criar workbook e adicionar worksheet
                 const wb = XLSX.utils.book_new();
                 XLSX.utils.book_append_sheet(wb, ws, `Dados_Filtrados_${currentSheetName}`);
-                
-                // Gerar arquivo e fazer download
-                XLSX.writeFile(wb, `dados_filtrados_${currentSheetName}.xlsx`);
-                
-                showStatus('Dados exportados com sucesso com totais calculados!', 'success');
+
+                // Gerar nome do arquivo com timestamp para evitar sobrescrita
+                const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+                const fileName = `dados_filtrados_${currentSheetName}_${timestamp}.xlsx`;
+
+                // Fazer download
+                XLSX.writeFile(wb, fileName);
+
+                showStatus('Dados exportados com sucesso!', 'success');
             } catch (error) {
                 console.error('Erro ao exportar dados:', error);
-                showStatus('Erro ao exportar dados', 'error');
+                showStatus(`Erro ao exportar dados: ${error.message}`, 'error');
             }
         }
         
@@ -889,6 +908,11 @@
                 statusMessage.style.display = 'none';
             }, 5000);
         }
+        
+        // Adicionar tratamento de erros global para debug
+        window.addEventListener('error', function(e) {
+            console.error('Erro global:', e.error);
+        });
     </script>
 </body>
 </html>
