@@ -395,6 +395,7 @@
         let numericColumns = [];
         let sheetNames = [];
         let currentSheetName = null;
+        let originalSheetData = {}; // Armazenar dados originais de cada aba
         
         // Elementos DOM
         const fileInput = document.getElementById('fileInput');
@@ -536,6 +537,9 @@
                 
                 currentSheetData.push(rowObj);
             }
+            
+            // Armazenar dados originais
+            originalSheetData[sheetName] = [...currentSheetData];
             
             filteredData = [...currentSheetData];
             
@@ -826,7 +830,7 @@
             tableBody.appendChild(totalsRow);
         }
         
-        // Função corrigida para exportar dados filtrados
+        // Função completamente corrigida para exportar dados filtrados
         function exportFilteredData() {
             if (!currentSheetName) {
                 showStatus('Nenhuma aba selecionada para exportação', 'error');
@@ -839,60 +843,62 @@
             }
 
             try {
-                // Preparar dados para exportação - remover coluna interna _sheet
+                console.log('Iniciando exportação...');
+                console.log('Dados filtrados:', filteredData);
+                
+                // Criar uma cópia profunda dos dados filtrados sem a coluna _sheet
                 const exportData = filteredData.map(row => {
-                    const newRow = {...row};
-                    delete newRow._sheet; // Remove a coluna interna
+                    const newRow = {};
+                    columns.forEach(col => {
+                        newRow[col] = row[col];
+                    });
                     return newRow;
                 });
-
-                // Criar worksheet com os dados
-                const ws = XLSX.utils.json_to_sheet(exportData);
                 
-                // Adicionar linha de totais se houver colunas numéricas
-                if (numericColumns.length > 0) {
-                    // Calcular a posição da próxima linha
-                    const nextRow = exportData.length + 2; // +2 porque a primeira linha é o cabeçalho
-                    
-                    // Adicionar linha em branco antes dos totais
-                    XLSX.utils.sheet_add_aoa(ws, [['']], { origin: `A${nextRow}` });
-                    
-                    // Preparar array para linha de totais
-                    const totalsRow = columns.map(column => {
-                        if (numericColumns.includes(column)) {
+                console.log('Dados preparados para exportação:', exportData);
+                
+                // Se houver colunas numéricas, adicionar linha de totais
+                if (numericColumns.length > 0 && exportData.length > 0) {
+                    const totalsRow = {};
+                    columns.forEach(col => {
+                        if (numericColumns.includes(col)) {
                             let total = 0;
-                            filteredData.forEach(row => {
-                                const value = parseFloat(row[column]);
+                            exportData.forEach(row => {
+                                const value = parseFloat(row[col]);
                                 if (!isNaN(value)) {
                                     total += value;
                                 }
                             });
-                            return total.toFixed(2);
-                        } else if (column === columns[0]) {
-                            return 'TOTAL';
+                            totalsRow[col] = total.toFixed(2);
+                        } else if (col === columns[0]) {
+                            totalsRow[col] = 'TOTAL';
                         } else {
-                            return '';
+                            totalsRow[col] = '';
                         }
                     });
-                    
-                    // Adicionar linha de totais
-                    XLSX.utils.sheet_add_aoa(ws, [totalsRow], { origin: `A${nextRow + 1}` });
+                    exportData.push(totalsRow);
                 }
-
-                // Criar workbook e adicionar worksheet
+                
+                // Criar worksheet
+                const ws = XLSX.utils.json_to_sheet(exportData);
+                
+                // Criar workbook
                 const wb = XLSX.utils.book_new();
-                XLSX.utils.book_append_sheet(wb, ws, `Dados_Filtrados_${currentSheetName}`);
-
-                // Gerar nome do arquivo com timestamp para evitar sobrescrita
+                XLSX.utils.book_append_sheet(wb, ws, 'Dados_Filtrados');
+                
+                // Gerar nome do arquivo
                 const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
                 const fileName = `dados_filtrados_${currentSheetName}_${timestamp}.xlsx`;
-
-                // Fazer download
+                
+                console.log('Gerando arquivo:', fileName);
+                
+                // Exportar arquivo
                 XLSX.writeFile(wb, fileName);
-
+                
                 showStatus('Dados exportados com sucesso!', 'success');
+                
             } catch (error) {
-                console.error('Erro ao exportar dados:', error);
+                console.error('Erro detalhado na exportação:', error);
                 showStatus(`Erro ao exportar dados: ${error.message}`, 'error');
             }
         }
