@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Filtro de Planilhas Excel - Com Identificação de Múltiplas Abas</title>
+    <title>Filtro de Planilhas Excel - Com Seleção Múltipla de Abas</title>
     <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
     <style>
         * {
@@ -122,6 +122,12 @@
             border-color: #2980b9;
         }
         
+        .sheet-btn.selected {
+            background: #2ecc71;
+            color: white;
+            border-color: #27ae60;
+        }
+        
         .filters-section {
             background: #f8f9fa;
             border-radius: 8px;
@@ -189,6 +195,15 @@
         
         .btn-secondary:hover {
             background: #7f8c8d;
+        }
+        
+        .btn-info {
+            background: #3498db;
+            color: white;
+        }
+        
+        .btn-info:hover {
+            background: #2980b9;
         }
         
         .table-container {
@@ -312,6 +327,22 @@
             font-weight: bold;
         }
         
+        .selection-info {
+            background: #e8f6f3;
+            border: 1px solid #a3e4d7;
+            border-radius: 5px;
+            padding: 10px 15px;
+            margin: 10px 0;
+            font-weight: bold;
+        }
+        
+        .sheet-actions {
+            display: flex;
+            gap: 10px;
+            margin: 15px 0;
+            flex-wrap: wrap;
+        }
+        
         @media (max-width: 768px) {
             .filter-row {
                 flex-direction: column;
@@ -328,12 +359,16 @@
             .sheet-stats {
                 grid-template-columns: 1fr;
             }
+            
+            .sheet-actions {
+                flex-direction: column;
+            }
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Filtro de Planilhas Excel - Com Identificação de Múltiplas Abas</h1>
+        <h1>Filtro de Planilhas Excel - Com Seleção Múltipla de Abas</h1>
         
         <div class="upload-section">
             <h3>Faça upload da sua planilha Excel</h3>
@@ -347,10 +382,22 @@
         
         <div class="sheets-panel" id="sheetsPanel">
             <h3>Abas/Planilhas Identificadas</h3>
-            <p>Clique em uma aba para visualizar os dados:</p>
+            <p>Clique para visualizar, Ctrl+Clique para selecionar múltiplas abas para exportação:</p>
+            
+            <div class="sheet-actions">
+                <button class="btn btn-info" id="selectAllSheets">Selecionar Todas</button>
+                <button class="btn btn-info" id="deselectAllSheets">Desselecionar Todas</button>
+                <button class="btn btn-info" id="viewSelectedSheets">Visualizar Abas Selecionadas</button>
+            </div>
+            
             <div class="sheets-list" id="sheetsList">
                 <!-- Botões de aba serão gerados dinamicamente aqui -->
             </div>
+            
+            <div class="selection-info" id="selectionInfo">
+                <!-- Informações sobre as abas selecionadas -->
+            </div>
+            
             <div class="sheet-info" id="sheetInfo">
                 <!-- Informações sobre as abas identificadas -->
             </div>
@@ -382,7 +429,7 @@
         </div>
         
         <div class="export-section" id="exportSection">
-            <button class="btn btn-primary" id="exportBtn">Exportar Dados Filtrados</button>
+            <button class="btn btn-primary" id="exportBtn">Exportar Dados Filtrados das Abas Selecionadas</button>
         </div>
     </div>
 
@@ -395,6 +442,7 @@
         let numericColumns = [];
         let sheetNames = [];
         let currentSheetName = null;
+        let selectedSheets = new Set(); // Conjunto para armazenar abas selecionadas
         let originalSheetData = {}; // Armazenar dados originais de cada aba
         
         // Elementos DOM
@@ -404,6 +452,7 @@
         const sheetsPanel = document.getElementById('sheetsPanel');
         const sheetsList = document.getElementById('sheetsList');
         const sheetInfo = document.getElementById('sheetInfo');
+        const selectionInfo = document.getElementById('selectionInfo');
         const currentSheetInfo = document.getElementById('currentSheetInfo');
         const filtersSection = document.getElementById('filtersSection');
         const filterRow = document.getElementById('filterRow');
@@ -414,12 +463,18 @@
         const tableBody = document.getElementById('tableBody');
         const exportSection = document.getElementById('exportSection');
         const exportBtn = document.getElementById('exportBtn');
+        const selectAllSheetsBtn = document.getElementById('selectAllSheets');
+        const deselectAllSheetsBtn = document.getElementById('deselectAllSheets');
+        const viewSelectedSheetsBtn = document.getElementById('viewSelectedSheets');
         
         // Event Listeners
         fileInput.addEventListener('change', handleFileUpload);
         resetFiltersBtn.addEventListener('click', resetFilters);
         applyFiltersBtn.addEventListener('click', applyFilters);
         exportBtn.addEventListener('click', exportFilteredData);
+        selectAllSheetsBtn.addEventListener('click', selectAllSheets);
+        deselectAllSheetsBtn.addEventListener('click', deselectAllSheets);
+        viewSelectedSheetsBtn.addEventListener('click', viewSelectedSheets);
         
         // Função para processar o upload do arquivo
         function handleFileUpload(event) {
@@ -555,7 +610,7 @@
             exportSection.style.display = 'block';
         }
         
-        // Função para gerar botões de aba
+        // Função para gerar botões de aba com suporte a seleção múltipla
         function generateSheetButtons() {
             sheetsList.innerHTML = '';
             
@@ -567,19 +622,155 @@
                     sheetButton.classList.add('active');
                 }
                 sheetButton.textContent = sheetName;
-                sheetButton.addEventListener('click', () => {
-                    // Remover classe active de todos os botões
-                    document.querySelectorAll('.sheet-btn').forEach(btn => {
-                        btn.classList.remove('active');
-                    });
-                    // Adicionar classe active ao botão clicado
-                    sheetButton.classList.add('active');
-                    
-                    // Carregar a aba selecionada
-                    loadSheet(sheetName);
+                sheetButton.addEventListener('click', (e) => {
+                    if (e.ctrlKey || e.metaKey) {
+                        // Ctrl+Clique para seleção múltipla
+                        e.preventDefault();
+                        toggleSheetSelection(sheetName, sheetButton);
+                    } else {
+                        // Clique simples para visualização
+                        // Remover classe active de todos os botões
+                        document.querySelectorAll('.sheet-btn').forEach(btn => {
+                            btn.classList.remove('active');
+                        });
+                        // Adicionar classe active ao botão clicado
+                        sheetButton.classList.add('active');
+                        
+                        // Carregar a aba selecionada
+                        loadSheet(sheetName);
+                    }
                 });
+                
+                // Duplo clique para seleção rápida
+                sheetButton.addEventListener('dblclick', () => {
+                    toggleSheetSelection(sheetName, sheetButton);
+                });
+                
                 sheetsList.appendChild(sheetButton);
             });
+            
+            updateSelectionInfo();
+        }
+        
+        // Função para alternar seleção de aba
+        function toggleSheetSelection(sheetName, button) {
+            if (selectedSheets.has(sheetName)) {
+                selectedSheets.delete(sheetName);
+                button.classList.remove('selected');
+            } else {
+                selectedSheets.add(sheetName);
+                button.classList.add('selected');
+            }
+            updateSelectionInfo();
+        }
+        
+        // Função para selecionar todas as abas
+        function selectAllSheets() {
+            selectedSheets = new Set(sheetNames);
+            document.querySelectorAll('.sheet-btn').forEach(button => {
+                button.classList.add('selected');
+            });
+            updateSelectionInfo();
+            showStatus('Todas as abas selecionadas', 'success');
+        }
+        
+        // Função para desselecionar todas as abas
+        function deselectAllSheets() {
+            selectedSheets.clear();
+            document.querySelectorAll('.sheet-btn').forEach(button => {
+                button.classList.remove('selected');
+            });
+            updateSelectionInfo();
+            showStatus('Todas as abas desselecionadas', 'success');
+        }
+        
+        // Função para visualizar abas selecionadas
+        function viewSelectedSheets() {
+            if (selectedSheets.size === 0) {
+                showStatus('Nenhuma aba selecionada para visualização', 'error');
+                return;
+            }
+            
+            // Combinar dados de todas as abas selecionadas
+            const combinedData = [];
+            const allColumns = new Set();
+            
+            selectedSheets.forEach(sheetName => {
+                if (originalSheetData[sheetName]) {
+                    originalSheetData[sheetName].forEach(row => {
+                        combinedData.push(row);
+                        // Coletar todas as colunas
+                        Object.keys(row).forEach(key => {
+                            if (key !== '_sheet') allColumns.add(key);
+                        });
+                    });
+                }
+            });
+            
+            if (combinedData.length === 0) {
+                showStatus('Nenhum dado encontrado nas abas selecionadas', 'error');
+                return;
+            }
+            
+            // Atualizar dados atuais para visualização combinada
+            currentSheetData = combinedData;
+            columns = Array.from(allColumns);
+            filteredData = [...currentSheetData];
+            
+            // Identificar colunas numéricas nos dados combinados
+            identifyNumericColumnsFromCombinedData();
+            
+            // Atualizar interface
+            updateCurrentSheetInfoForMultiple();
+            generateFilters();
+            renderTable();
+            
+            showStatus(`Visualizando ${combinedData.length} registros de ${selectedSheets.size} abas selecionadas`, 'success');
+        }
+        
+        // Função para identificar colunas numéricas a partir de dados combinados
+        function identifyNumericColumnsFromCombinedData() {
+            numericColumns = [];
+            
+            if (currentSheetData.length === 0) return;
+            
+            columns.forEach(column => {
+                let numericCount = 0;
+                let totalCount = 0;
+                
+                // Verificar amostra dos dados
+                const sampleSize = Math.min(100, currentSheetData.length);
+                
+                for (let i = 0; i < sampleSize; i++) {
+                    const value = currentSheetData[i][column];
+                    
+                    if (value !== undefined && value !== null && value !== '') {
+                        totalCount++;
+                        const numValue = parseFloat(value);
+                        
+                        if (!isNaN(numValue) && typeof value !== 'boolean') {
+                            numericCount++;
+                        }
+                    }
+                }
+                
+                // Considerar como numérica se pelo menos 70% dos valores são numéricos
+                if (totalCount > 0 && (numericCount / totalCount) >= 0.7) {
+                    numericColumns.push(column);
+                }
+            });
+        }
+        
+        // Função para atualizar informações de seleção
+        function updateSelectionInfo() {
+            if (selectedSheets.size === 0) {
+                selectionInfo.innerHTML = '<strong>Nenhuma aba selecionada</strong> - Clique nas abas com Ctrl para selecionar múltiplas';
+            } else {
+                const sheetsArray = Array.from(selectedSheets);
+                selectionInfo.innerHTML = `
+                    <strong>${selectedSheets.size} aba(s) selecionada(s):</strong> ${sheetsArray.join(', ')}
+                `;
+            }
         }
         
         // Função para atualizar informações sobre as abas
@@ -621,6 +812,15 @@
             `;
         }
         
+        // Função para atualizar informações quando múltiplas abas estão sendo visualizadas
+        function updateCurrentSheetInfoForMultiple() {
+            currentSheetInfo.innerHTML = `
+                <strong>Visualizando:</strong> ${selectedSheets.size} aba(s) selecionadas
+                | <strong>Total de Linhas:</strong> ${currentSheetData.length}
+                | <strong>Colunas:</strong> ${columns.length}
+            `;
+        }
+        
         // Função melhorada para identificar colunas numéricas
         function identifyNumericColumns(data) {
             numericColumns = [];
@@ -655,8 +855,6 @@
                     numericColumns.push(columnName);
                 }
             }
-            
-            console.log('Colunas numéricas identificadas:', numericColumns);
         }
         
         // Função para gerar filtros dinamicamente
@@ -830,72 +1028,51 @@
             tableBody.appendChild(totalsRow);
         }
         
-        // Função completamente corrigida para exportar dados filtrados
+        // Função para exportar dados filtrados de múltiplas abas
         function exportFilteredData() {
-            if (!currentSheetName) {
+            if (selectedSheets.size === 0) {
                 showStatus('Nenhuma aba selecionada para exportação', 'error');
                 return;
             }
             
-            if (filteredData.length === 0) {
-                showStatus('Não há dados para exportar', 'error');
-                return;
-            }
-
             try {
-                console.log('Iniciando exportação...');
-                console.log('Dados filtrados:', filteredData);
+                console.log('Iniciando exportação de múltiplas abas...');
                 
-                // Criar uma cópia profunda dos dados filtrados sem a coluna _sheet
-                const exportData = filteredData.map(row => {
-                    const newRow = {};
-                    columns.forEach(col => {
-                        newRow[col] = row[col];
-                    });
-                    return newRow;
-                });
-                
-                console.log('Dados preparados para exportação:', exportData);
-                
-                // Se houver colunas numéricas, adicionar linha de totais
-                if (numericColumns.length > 0 && exportData.length > 0) {
-                    const totalsRow = {};
-                    columns.forEach(col => {
-                        if (numericColumns.includes(col)) {
-                            let total = 0;
-                            exportData.forEach(row => {
-                                const value = parseFloat(row[col]);
-                                if (!isNaN(value)) {
-                                    total += value;
-                                }
-                            });
-                            totalsRow[col] = total.toFixed(2);
-                        } else if (col === columns[0]) {
-                            totalsRow[col] = 'TOTAL';
-                        } else {
-                            totalsRow[col] = '';
-                        }
-                    });
-                    exportData.push(totalsRow);
-                }
-                
-                // Criar worksheet
-                const ws = XLSX.utils.json_to_sheet(exportData);
-                
-                // Criar workbook
+                // Criar um novo workbook para exportação
                 const wb = XLSX.utils.book_new();
-                XLSX.utils.book_append_sheet(wb, ws, 'Dados_Filtrados');
+                
+                // Processar cada aba selecionada
+                selectedSheets.forEach(sheetName => {
+                    if (originalSheetData[sheetName]) {
+                        // Preparar dados para exportação - remover coluna interna _sheet
+                        const exportData = originalSheetData[sheetName].map(row => {
+                            const newRow = {};
+                            // Obter colunas desta aba específica
+                            const sheetColumns = Object.keys(row).filter(key => key !== '_sheet');
+                            sheetColumns.forEach(col => {
+                                newRow[col] = row[col];
+                            });
+                            return newRow;
+                        });
+                        
+                        // Criar worksheet para esta aba
+                        const ws = XLSX.utils.json_to_sheet(exportData);
+                        
+                        // Adicionar worksheet ao workbook
+                        XLSX.utils.book_append_sheet(wb, ws, sheetName.substring(0, 31)); // Limitar nome a 31 caracteres
+                    }
+                });
                 
                 // Gerar nome do arquivo
                 const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
-                const fileName = `dados_filtrados_${currentSheetName}_${timestamp}.xlsx`;
+                const fileName = `dados_exportados_${timestamp}.xlsx`;
                 
-                console.log('Gerando arquivo:', fileName);
+                console.log('Gerando arquivo com', selectedSheets.size, 'abas:', fileName);
                 
                 // Exportar arquivo
                 XLSX.writeFile(wb, fileName);
                 
-                showStatus('Dados exportados com sucesso!', 'success');
+                showStatus(`${selectedSheets.size} aba(s) exportadas com sucesso!`, 'success');
                 
             } catch (error) {
                 console.error('Erro detalhado na exportação:', error);
